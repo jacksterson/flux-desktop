@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 // --- Discovery Types ---
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "lowercase")]
 pub enum WindowLevel {
     #[default]
     Desktop,
@@ -555,7 +555,7 @@ mod tests {
             "window": {
                 "width": 400, "height": 600,
                 "transparent": true, "decorations": false,
-                "alwaysOnTop": false, "resizable": true
+                "windowLevel": "desktop", "resizable": true
             },
             "permissions": ["system:stats"]
         }"#;
@@ -578,6 +578,21 @@ mod tests {
         }"#;
         let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn module_manifest_parses_window_level_top() {
+        let json = r#"{
+            "id": "t", "name": "T", "author": "a", "version": "1.0.0",
+            "entry": "index.html",
+            "window": {
+                "width": 400, "height": 600, "transparent": true,
+                "decorations": false, "windowLevel": "top", "resizable": true
+            },
+            "permissions": []
+        }"#;
+        let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.window.window_level, WindowLevel::Top);
     }
 
     #[test]
