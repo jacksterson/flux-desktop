@@ -14,6 +14,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // --- Discovery Types ---
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowLevel {
+    #[default]
+    Desktop,
+    Top,
+    Normal,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleWindowConfig {
@@ -21,7 +30,8 @@ pub struct ModuleWindowConfig {
     pub height: f64,
     pub transparent: bool,
     pub decorations: bool,
-    pub always_on_top: bool,
+    #[serde(default)]
+    pub window_level: WindowLevel,
     pub resizable: bool,
 }
 
@@ -193,11 +203,13 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                     p.windows.get(&id).cloned()
                 };
 
+                let always_on_top = win_config.window_level == WindowLevel::Top;
+
                 let mut builder = WebviewWindowBuilder::new(&app, &id, url)
                     .title(&manifest.name)
                     .transparent(win_config.transparent)
                     .decorations(win_config.decorations)
-                    .always_on_top(win_config.always_on_top)
+                    .always_on_top(always_on_top)
                     .resizable(win_config.resizable)
                     .skip_taskbar(true)
                     .shadow(false);
@@ -551,5 +563,35 @@ mod tests {
         assert_eq!(manifest.id, "test-widget");
         assert_eq!(manifest.window.width, 400.0);
         assert_eq!(manifest.permissions, vec!["system:stats"]);
+    }
+
+    #[test]
+    fn module_manifest_parses_window_level_desktop() {
+        let json = r#"{
+            "id": "t", "name": "T", "author": "a", "version": "1.0.0",
+            "entry": "index.html",
+            "window": {
+                "width": 400, "height": 600, "transparent": true,
+                "decorations": false, "windowLevel": "desktop", "resizable": true
+            },
+            "permissions": []
+        }"#;
+        let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn module_manifest_window_level_defaults_to_desktop() {
+        let json = r#"{
+            "id": "t", "name": "T", "author": "a", "version": "1.0.0",
+            "entry": "index.html",
+            "window": {
+                "width": 400, "height": 600, "transparent": true,
+                "decorations": false, "resizable": true
+            },
+            "permissions": []
+        }"#;
+        let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
     }
 }

@@ -1,16 +1,16 @@
 {
-    "id": "time-date",
-    "name": "Time & Chronometry",
-    "author": "Flux Core",
-    "version": "1.0.0",
-    "entry": "index.html",
-    "window": {
-        "width": 350,
-        "height": 200,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "resizable": true
-    },
-    "permissions": []
+  "id": "time-date",
+  "name": "Time & Chronometry",
+  "author": "Flux Core",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "window": {
+    "width": 350,
+    "height": 200,
+    "transparent": true,
+    "decorations": false,
+    "windowLevel": "desktop",
+    "resizable": true
+  },
+  "permissions": []
 }

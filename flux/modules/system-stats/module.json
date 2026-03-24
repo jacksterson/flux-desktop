@@ -9,7 +9,7 @@
     "height": 600,
     "transparent": true,
     "decorations": false,
-    "alwaysOnTop": true,
+    "windowLevel": "desktop",
     "resizable": true,
     "minWidth": 280,
     "minHeight": 450
