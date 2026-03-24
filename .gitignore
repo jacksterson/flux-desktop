@@ -16,6 +16,12 @@ flux/window_state.json
 .DS_Store
 Thumbs.db
 
+# Website build output
+flux/website/dist/
+
+# Secrets
+.env*
+
 # Obsidian
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
