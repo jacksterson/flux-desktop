@@ -48,23 +48,38 @@ pub struct WindowBounds {
     pub height: f64,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+const STATE_VERSION: u32 = 1;
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PersistentState {
+    #[serde(default)]
+    pub version: u32,
     pub windows: HashMap<String, WindowBounds>,
 }
 
+impl Default for PersistentState {
+    fn default() -> Self {
+        Self { version: STATE_VERSION, windows: HashMap::new() }
+    }
+}
+
 impl PersistentState {
-    fn load() -> Self {
-        let path = PathBuf::from("/home/jack/bridgegap/flux/window_state.json");
+    pub fn load(path: &std::path::Path) -> Self {
         if let Ok(content) = fs::read_to_string(path) {
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            Self::default()
+            if let Ok(state) = serde_json::from_str::<Self>(&content) {
+                if state.version == STATE_VERSION {
+                    return state;
+                }
+                // Version mismatch: discard and start fresh
+            }
         }
+        Self::default()
     }
 
-    fn save(&self) {
-        let path = PathBuf::from("/home/jack/bridgegap/flux/window_state.json");
+    pub fn save(&self, path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
         if let Ok(content) = serde_json::to_string_pretty(self) {
             let _ = fs::write(path, content);
         }
@@ -79,6 +94,7 @@ pub struct AppState {
     pub last_disk_io: Mutex<(u64, u64, Instant)>,
     pub active_modules: Mutex<HashMap<String, ModuleManifest>>,
     pub persistent: Mutex<PersistentState>,
+    pub data_dir: PathBuf,   // OS app data dir — for window_state.json
 }
 
 #[derive(Serialize)]
@@ -120,16 +136,17 @@ fn track_window(window: WebviewWindow) {
     let w = window.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
-            let app_state = app_handle.state::<AppState>();
+            let state = app_handle.state::<AppState>();
             if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
-                let mut p = app_state.persistent.lock().unwrap();
+                let mut p = state.persistent.lock().unwrap();
                 p.windows.insert(label.clone(), WindowBounds {
                     x: pos.x as f64,
                     y: pos.y as f64,
                     width: size.width as f64,
                     height: size.height as f64,
                 });
-                p.save();
+                let state_path = state.data_dir.join("window_state.json");
+                p.save(&state_path);
             }
         }
     });
@@ -325,14 +342,6 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
 pub fn run() {
     let nvml = Nvml::init().ok();
     tauri::Builder::default()
-        .manage(AppState {
-            sys: Mutex::new(System::new_all()),
-            nvml,
-            last_net_io: Mutex::new((0, 0, Instant::now())),
-            last_disk_io: Mutex::new((0, 0, Instant::now())),
-            active_modules: Mutex::new(HashMap::new()),
-            persistent: Mutex::new(PersistentState::load()),
-        })
         .register_uri_scheme_protocol("flux-module", |_app, request| {
             let uri = request.uri().to_string();
             let path_part = uri.strip_prefix("flux-module://").unwrap_or("");
@@ -356,39 +365,107 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // Track and restore main window
+            // Resolve data directory
+            let data_dir = app.path().app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+
+            // Create ~/Flux/modules and ~/Flux/skins if needed
+            if let Err(e) = ensure_flux_dirs() {
+                eprintln!("Warning: could not create Flux directories: {}", e);
+            }
+
+            // Load persistent state
+            let state_path = data_dir.join("window_state.json");
+            let persistent = PersistentState::load(&state_path);
+
+            // Restore main window position
             if let Some(main_win) = app.get_webview_window("main") {
-                let app_state = app.state::<AppState>();
-                let p = app_state.persistent.lock().unwrap();
-                if let Some(b) = p.windows.get("main") {
+                if let Some(b) = persistent.windows.get("main") {
                     let _ = main_win.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
                     let _ = main_win.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
                 }
                 track_window(main_win);
             }
 
+            app.manage(AppState {
+                sys: Mutex::new(System::new_all()),
+                nvml,
+                last_net_io: Mutex::new((0, 0, Instant::now())),
+                last_disk_io: Mutex::new((0, 0, Instant::now())),
+                active_modules: Mutex::new(HashMap::new()),
+                persistent: Mutex::new(persistent),
+                data_dir,
+            });
+
+            // System tray
             let quit_i = MenuItem::with_id(app, "quit", "Quit Flux", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show Command Center", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
-            let _tray = TrayIconBuilder::new()
+            TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => { std::process::exit(0); }
-                    "show" => { if let Some(win) = app.get_webview_window("main") { let _ = win.show(); let _ = win.set_focus(); } }
+                    "quit" => std::process::exit(0),
+                    "show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") { let _ = win.show(); let _ = win.set_focus(); }
+                        if let Some(win) = tray.app_handle().get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
                     }
                 })
                 .build(app)?;
+
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![get_system_stats, drag_window, list_modules, toggle_module, open_module_settings, close_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env::temp_dir;
+
+    #[test]
+    fn persistent_state_roundtrip() {
+        let path = temp_dir().join("flux_test_state.json");
+        let mut state = PersistentState::default();
+        state.windows.insert(
+            "test-window".to_string(),
+            WindowBounds { x: 10.0, y: 20.0, width: 400.0, height: 600.0 },
+        );
+        state.save(&path);
+        let loaded = PersistentState::load(&path);
+        assert_eq!(loaded.windows["test-window"].x, 10.0);
+        assert_eq!(loaded.windows["test-window"].height, 600.0);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn persistent_state_missing_file_returns_default() {
+        let path = temp_dir().join("flux_nonexistent_state.json");
+        let _ = std::fs::remove_file(&path);
+        let loaded = PersistentState::load(&path);
+        assert!(loaded.windows.is_empty());
+    }
+
+    #[test]
+    fn persistent_state_version_mismatch_returns_default() {
+        let path = temp_dir().join("flux_test_version.json");
+        std::fs::write(&path, r#"{"version": 999, "windows": {}}"#).unwrap();
+        let loaded = PersistentState::load(&path);
+        assert!(loaded.windows.is_empty());
+        std::fs::remove_file(path).ok();
+    }
 }
