@@ -1,3 +1,6 @@
+mod paths;
+use paths::{ensure_flux_dirs, flux_modules_dir};
+
 use sysinfo::{System, Components, Networks, CpuRefreshKind, RefreshKind};
 use std::sync::Mutex;
 use tauri::{State, Window, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
