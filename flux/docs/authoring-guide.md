@@ -51,7 +51,7 @@ Drop it in `~/Flux/modules/` and it appears in Flux immediately.
 ### windowLevel
 | Value | Behaviour |
 |-------|-----------|
-| `"desktop"` | Above wallpaper, below all windows (default) |
+| `"desktop"` | Above wallpaper, below all windows (default) — *Phase 2: desktop layer not yet implemented; currently behaves as `"normal"`* |
 | `"top"` | Always on top of all windows |
 | `"normal"` | Standard window z-ordering |
 
@@ -98,6 +98,27 @@ __TAURI__.core.invoke("drag_window");
 
 ### `list_modules`
 Returns all available module manifests (both active and inactive).
+
+```typescript
+interface ModuleManifest {
+  id: string;
+  name: string;
+  author: string;
+  version: string;
+  entry: string;
+  active: boolean;
+  window: {
+    width: number; height: number;
+    transparent: boolean; decorations: boolean;
+    windowLevel: "desktop" | "top" | "normal";
+    resizable: boolean;
+  };
+  permissions: string[];
+}
+
+// Usage
+const modules = await __TAURI__.core.invoke<ModuleManifest[]>("list_modules");
+```
 
 ### `toggle_module`
 Shows or hides a module window by id.
@@ -155,6 +176,8 @@ Include this as `COMPATIBILITY.md` in your widget repo before publishing:
 ## Flux Compatibility
 
 - [ ] Tested on Linux
+- [ ] Tested on Windows
+- [ ] Tested on Mac
 - [ ] Handles `gpu: null` without UI breakage
 - [ ] Handles `disk_read: null` / `disk_write: null` without UI breakage
 - [ ] No hard-coded file paths
