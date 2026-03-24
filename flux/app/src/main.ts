@@ -140,10 +140,10 @@ class SystemStatsModule {
     this.netGraph.update(stats.net_in + stats.net_out, 1024*1024*2, theme.primary);
 
     const diskSection = document.getElementById("disk-section");
-    if (stats.disk_read !== null && stats.disk_read !== undefined) {
+    if (stats.disk_read !== null && stats.disk_write !== null) {
       document.getElementById("disk-read")!.textContent = `READ: ${fmtBS(stats.disk_read)}`;
-      document.getElementById("disk-write")!.textContent = `WRITE: ${fmtBS(stats.disk_write ?? 0)}`;
-      this.diskGraph.update((stats.disk_read ?? 0) + (stats.disk_write ?? 0), 1024 * 1024 * 10, theme.primary);
+      document.getElementById("disk-write")!.textContent = `WRITE: ${fmtBS(stats.disk_write)}`;
+      this.diskGraph.update(stats.disk_read + stats.disk_write, 1024 * 1024 * 10, theme.primary);
       if (diskSection) diskSection.style.display = "";
     } else {
       if (diskSection) diskSection.style.display = "none";
