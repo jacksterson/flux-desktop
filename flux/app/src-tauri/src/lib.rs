@@ -111,11 +111,14 @@ pub struct SystemStats {
 
 #[tauri::command]
 fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifest> {
-    let active_map = state.active_modules.lock().unwrap();
+    // Snapshot active IDs under lock, then release before doing filesystem I/O
+    let active_ids: std::collections::HashSet<String> = {
+        let active_map = state.active_modules.lock().unwrap();
+        active_map.keys().cloned().collect()
+    };
     let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut modules = Vec::new();
 
-    // User modules first — these shadow bundled modules of the same id
     let bundled_path = app.path().resource_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("modules");
@@ -127,9 +130,8 @@ fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifes
                 if path.is_dir() {
                     if let Ok(content) = fs::read_to_string(path.join("module.json")) {
                         if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
-                            // User modules (first loop iteration) win over bundled duplicates
                             if seen_ids.insert(manifest.id.clone()) {
-                                manifest.active = active_map.contains_key(&manifest.id);
+                                manifest.active = active_ids.contains(&manifest.id);
                                 modules.push(manifest);
                             }
                         }
@@ -170,8 +172,17 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
         if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
         if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
     } else {
-        let modules_path = flux_modules_dir();
-        let manifest_path = modules_path.join(&id).join("module.json");
+        let user_manifest = flux_modules_dir().join(&id).join("module.json");
+        let bundled_manifest = app.path().resource_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("modules").join(&id).join("module.json");
+
+        let manifest_path = if user_manifest.exists() {
+            user_manifest
+        } else {
+            bundled_manifest
+        };
+
         if let Ok(content) = fs::read_to_string(&manifest_path) {
             if let Ok(manifest) = serde_json::from_str::<ModuleManifest>(&content) {
                 let win_config = &manifest.window;
@@ -360,15 +371,33 @@ pub fn run() {
             let uri = request.uri().to_string();
             let path_part = uri.strip_prefix("flux-module://").unwrap_or("");
 
-            // Check user modules dir first, then bundled resources
-            let user_path = flux_modules_dir().join(path_part);
-            let file_path = if user_path.exists() {
-                user_path
+            // Resolve candidate paths
+            let user_base = flux_modules_dir();
+            let user_candidate = user_base.join(path_part);
+
+            // Canonicalize to resolve .. segments and symlinks
+            let file_path = if let Ok(canonical) = user_candidate.canonicalize() {
+                if canonical.starts_with(&user_base.canonicalize().unwrap_or(user_base.clone())) {
+                    canonical
+                } else {
+                    // Path traversal attempt — deny
+                    return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+                }
             } else {
-                ctx.app_handle().path().resource_dir()
+                // Not in user dir — try bundled resources
+                let bundled_base = ctx.app_handle().path().resource_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
-                    .join("modules")
-                    .join(path_part)
+                    .join("modules");
+                let bundled_candidate = bundled_base.join(path_part);
+                if let Ok(canonical) = bundled_candidate.canonicalize() {
+                    if canonical.starts_with(&bundled_base.canonicalize().unwrap_or(bundled_base.clone())) {
+                        canonical
+                    } else {
+                        return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+                    }
+                } else {
+                    return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+                }
             };
 
             if let Ok(content) = fs::read(&file_path) {
