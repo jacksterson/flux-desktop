@@ -103,7 +103,7 @@ class SystemStatsModule {
     return theme.danger;
   }
 
-  update(stats: SystemStats, cfg: any, theme: Theme) {
+  update(stats: SystemStats, _cfg: any, theme: Theme) {
     const applyStyle = (id: string, color: string) => {
         const el = document.querySelector(`#${id} .stats-right`) as HTMLElement;
         if (el) el.style.color = color;
