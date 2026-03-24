@@ -110,19 +110,29 @@ pub struct SystemStats {
 // --- Commands ---
 
 #[tauri::command]
-fn list_modules(state: State<'_, AppState>) -> Vec<ModuleManifest> {
+fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifest> {
+    let active_map = state.active_modules.lock().unwrap();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut modules = Vec::new();
-    let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
-    if let Ok(entries) = fs::read_dir(&modules_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let manifest_path = path.join("module.json");
-                if let Ok(content) = fs::read_to_string(&manifest_path) {
-                    if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
-                        let active_map = state.active_modules.lock().unwrap();
-                        manifest.active = active_map.contains_key(&manifest.id);
-                        modules.push(manifest);
+
+    // User modules first — these shadow bundled modules of the same id
+    let bundled_path = app.path().resource_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("modules");
+
+    for modules_path in [flux_modules_dir(), bundled_path] {
+        if let Ok(entries) = fs::read_dir(&modules_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Ok(content) = fs::read_to_string(path.join("module.json")) {
+                        if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
+                            // User modules (first loop iteration) win over bundled duplicates
+                            if seen_ids.insert(manifest.id.clone()) {
+                                manifest.active = active_map.contains_key(&manifest.id);
+                                modules.push(manifest);
+                            }
+                        }
                     }
                 }
             }
@@ -160,7 +170,7 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
         if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
         if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
     } else {
-        let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
+        let modules_path = flux_modules_dir();
         let manifest_path = modules_path.join(&id).join("module.json");
         if let Ok(content) = fs::read_to_string(&manifest_path) {
             if let Ok(manifest) = serde_json::from_str::<ModuleManifest>(&content) {
@@ -346,13 +356,23 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .register_uri_scheme_protocol("flux-module", |_app, request| {
+        .register_uri_scheme_protocol("flux-module", |ctx, request| {
             let uri = request.uri().to_string();
             let path_part = uri.strip_prefix("flux-module://").unwrap_or("");
-            let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
-            let file_path = modules_path.join(path_part);
+
+            // Check user modules dir first, then bundled resources
+            let user_path = flux_modules_dir().join(path_part);
+            let file_path = if user_path.exists() {
+                user_path
+            } else {
+                ctx.app_handle().path().resource_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("modules")
+                    .join(path_part)
+            };
+
             if let Ok(content) = fs::read(&file_path) {
-                let ext = file_path.extension().map_or("", |e| e.to_str().unwrap_or(""));
+                let ext = file_path.extension().map_or("", |e: &std::ffi::OsStr| e.to_str().unwrap_or(""));
                 let mime = match ext {
                     "html" => "text/html",
                     "js" => "application/javascript",
@@ -363,7 +383,10 @@ pub fn run() {
                     "json" => "application/json",
                     _ => "application/octet-stream",
                 };
-                tauri::http::Response::builder().header("Content-Type", mime).body(content).unwrap()
+                tauri::http::Response::builder()
+                    .header("Content-Type", mime)
+                    .body(content)
+                    .unwrap()
             } else {
                 tauri::http::Response::builder().status(404).body(Vec::new()).unwrap()
             }
@@ -478,5 +501,26 @@ mod tests {
         let loaded = PersistentState::load(&path);
         assert!(loaded.windows.is_empty());
         std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn module_manifest_parses_correctly() {
+        let json = r#"{
+            "id": "test-widget",
+            "name": "Test Widget",
+            "author": "Tester",
+            "version": "1.0.0",
+            "entry": "index.html",
+            "window": {
+                "width": 400, "height": 600,
+                "transparent": true, "decorations": false,
+                "alwaysOnTop": false, "resizable": true
+            },
+            "permissions": ["system:stats"]
+        }"#;
+        let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.id, "test-widget");
+        assert_eq!(manifest.window.width, 400.0);
+        assert_eq!(manifest.permissions, vec!["system:stats"]);
     }
 }
