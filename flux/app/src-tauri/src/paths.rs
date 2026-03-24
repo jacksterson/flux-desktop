@@ -4,7 +4,7 @@ use std::path::PathBuf;
 /// Same path on all platforms: users never need to know about AppData or Library.
 pub fn flux_user_dir() -> PathBuf {
     dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+        .expect("Flux requires a home directory. Set the HOME environment variable and restart.")
         .join("Flux")
 }
 
@@ -50,5 +50,15 @@ mod tests {
         let result = flux_skins_dir();
         assert!(result.starts_with(flux_user_dir()));
         assert_eq!(result.file_name().unwrap(), "skins");
+    }
+
+    #[test]
+    fn ensure_flux_dirs_creates_directories() {
+        // Exercise the real function — it creates ~/Flux/modules and ~/Flux/skins.
+        // We can't easily redirect it to a temp path without refactoring,
+        // so we call it and verify the directories exist afterward.
+        ensure_flux_dirs().expect("ensure_flux_dirs should not fail");
+        assert!(flux_modules_dir().exists(), "modules dir should exist after ensure_flux_dirs");
+        assert!(flux_skins_dir().exists(), "skins dir should exist after ensure_flux_dirs");
     }
 }
