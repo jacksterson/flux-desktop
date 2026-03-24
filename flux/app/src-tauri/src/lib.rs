@@ -292,6 +292,7 @@ fn drag_window(window: Window) { let _ = window.start_dragging(); }
 
 // --- Metrics Logic ---
 
+#[cfg(target_os = "linux")]
 fn get_linux_gpu_usage() -> u32 {
     for i in 0..3 {
         let path = format!("/sys/class/drm/card{}/device/gpu_busy_percent", i);
@@ -300,6 +301,7 @@ fn get_linux_gpu_usage() -> u32 {
     0
 }
 
+#[cfg(target_os = "linux")]
 fn get_linux_vram_best() -> Option<(u64, u64)> {
     let mut best = (0, 0);
     for i in 0..5 {
@@ -364,6 +366,7 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
             gpu = Some(GpuStats { usage: ut, vram_used: m.as_ref().map(|m| m.used).unwrap_or(0), vram_total: m.as_ref().map(|m| m.total).unwrap_or(0), vram_percentage: m.as_ref().map(|m| (m.used as f32 / m.total as f32) * 100.0).unwrap_or(0.0), temp: t.map(|t| t as f32).unwrap_or(0.0) });
         }
     }
+    #[cfg(target_os = "linux")]
     if gpu.is_none() || gpu.as_ref().map_or(0, |g| g.usage) == 0 {
         if let Some((u, t)) = get_linux_vram_best() {
             let gpu_temp = components.iter().filter(|c| c.label().to_lowercase().contains("gpu") || c.label().to_lowercase().contains("amdgpu")).filter_map(|c| c.temperature()).max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0.0);
