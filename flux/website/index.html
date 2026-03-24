@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLUX | Tactical Desktop Customization</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --surface: #121216;
+            --accent: #eaff00;
+            --text-dim: #888891;
+            --text-bright: #ffffff;
+            --border: #27272a;
+            --glitch-speed: 0.2s;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            cursor: crosshair;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-bright);
+            font-family: 'JetBrains Mono', monospace;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Scanline Overlay */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 9999;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        header {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .status-bar {
+            position: absolute;
+            top: 2rem;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .hero-title {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: clamp(4rem, 15vw, 10rem);
+            line-height: 0.8;
+            margin-bottom: 2rem;
+            color: var(--text-bright);
+            text-transform: uppercase;
+            position: relative;
+        }
+
+        .hero-title span {
+            display: block;
+            color: var(--accent);
+            font-size: 0.2em;
+            letter-spacing: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .tagline {
+            max-width: 600px;
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            margin-bottom: 3rem;
+            border-left: 4px solid var(--accent);
+            padding-left: 1.5rem;
+        }
+
+        .cta-group {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .btn-primary:hover {
+            background: transparent;
+            color: var(--accent);
+            box-shadow: 0 0 20px var(--accent);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--accent);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(234, 255, 0, 0.1);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 10rem 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            padding: 2.5rem;
+            border: 1px solid var(--border);
+            position: relative;
+        }
+
+        .feature-card::before {
+            content: "ID: " attr(data-id);
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 0.6rem;
+            color: var(--text-dim);
+        }
+
+        .feature-card h3 {
+            color: var(--accent);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+
+        .feature-card p {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        /* Monetization / Support Block */
+        .support-block {
+            background: var(--accent);
+            color: var(--bg);
+            padding: 4rem;
+            text-align: center;
+            margin-bottom: 10rem;
+        }
+
+        .support-block h2 {
+            font-size: 3rem;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        .support-block p {
+            font-weight: 700;
+            margin-bottom: 2rem;
+        }
+
+        .ko-fi-btn {
+            background: #29abe0;
+            color: white;
+            padding: 1.5rem 3rem;
+            border-radius: 4px;
+            font-size: 1.5rem;
+            text-decoration: none;
+            display: inline-block;
+            box-shadow: 0 4px 0 #1b7397;
+        }
+
+        footer {
+            padding: 4rem 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        /* Kojima-style Boot Animation */
+        @keyframes boot {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .boot-seq > * {
+            animation: boot 0.5s ease forwards;
+            opacity: 0;
+        }
+
+        .boot-seq *:nth-child(1) { animation-delay: 0.2s; }
+        .boot-seq *:nth-child(2) { animation-delay: 0.4s; }
+        .boot-seq *:nth-child(3) { animation-delay: 0.6s; }
+        .boot-seq *:nth-child(4) { animation-delay: 0.8s; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header class="boot-seq">
+            <div class="status-bar">
+                <span>System: Online</span>
+                <span>Lat: 37.4786° N | Long: 105.8700° W (ALAMOSA)</span>
+                <span>Ver: 0.1.0-DEV</span>
+            </div>
+
+            <h1 class="hero-title">
+                <span>// Protocol</span>
+                FLUX
+            </h1>
+
+            <p class="tagline">
+                Tactical cross-platform desktop engine. Built with Rust. Driven by WebGPU. 
+                The next evolution of the digital workspace has arrived.
+            </p>
+
+            <div class="cta-group">
+                <a href="#support" class="btn btn-primary">Support Development</a>
+                <a href="#" class="btn btn-secondary">Join Beta Queue</a>
+            </div>
+        </header>
+
+        <section class="features">
+            <div class="feature-card" data-id="001">
+                <h3>Rust Core</h3>
+                <p>Native performance with zero memory bloat. A background utility that stays out of your way until called.</p>
+            </div>
+            <div class="feature-card" data-id="002">
+                <h3>WebGPU Visuals</h3>
+                <p>Harness the full power of your hardware. Procedural graphics and shaders rendered with modern GPU pipelines.</p>
+            </div>
+            <div class="feature-card" data-id="003">
+                <h3>AI-First Skins</h3>
+                <p>Declarative JSON manifests and TypeScript logic designed for seamless generation by LLM assistants.</p>
+            </div>
+        </section>
+
+        <section id="support" class="support-block">
+            <h2>Support the Mission</h2>
+            <p>FLUX is being built by a solo developer in the high desert of Colorado. Help fund the prototype.</p>
+            <a href="https://ko-fi.com/YOUR_KOFI_LINK" class="ko-fi-btn">☕ Buy me a Coffee</a>
+            <p style="margin-top: 2rem; font-size: 0.8rem;">Commercial licenses available for streamers and enterprise.</p>
+        </section>
+
+        <footer>
+            <p>&copy; 2026 FLUX SYSTEM / DEPLOYED FROM ALAMOSA, CO</p>
+        </footer>
+    </div>
+
+</body>
+</html>

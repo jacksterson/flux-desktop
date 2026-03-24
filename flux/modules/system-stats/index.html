@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLUX HUD // SYSTEM STATS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-hud-primary: #00BFFF;
+            --color-hud-primary-soft: #4FC3F7;
+            --color-hud-neutral: #E8EAED;
+            --color-hud-safe: #39FF14;
+            --color-hud-caution: #FFC107;
+            --color-hud-alert: #FF6B1A;
+            --color-hud-danger: #FF2020;
+            --color-hud-chiral: #9B59B6;
+            --color-bg-base: rgba(10, 15, 26, 0.80);
+            --color-bg-panel: rgba(0, 191, 255, 0.08);
+            --color-bg-panel-hover: rgba(0, 191, 255, 0.15);
+            --color-border-default: rgba(79, 195, 247, 0.45);
+            --font-main: 'Rajdhani', sans-serif;
+            --font-tech: 'Share Tech Mono', monospace;
+            --font-header: 'Orbitron', sans-serif;
+            --mouse-x: 50%; --mouse-y: 50%;
+            --pattern-opacity: 0;
+        }
+
+        html { font-size: 14px; height: 100%; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+        body {
+            background: transparent;
+            color: var(--color-hud-primary);
+            font-family: var(--font-main);
+            width: 100vw; height: 100vh;
+            overflow: hidden; 
+            display: flex; justify-content: center; align-items: center;
+            padding: 0; 
+            position: relative;
+        }
+
+        /* Scanlines Effect */
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%; opacity: 0.15;
+        }
+
+        /* TOP-LEVEL INTERACTION LAYER (Resizers) */
+        .resizer { position: absolute; background: transparent; z-index: 10000; pointer-events: auto; }
+        .resizer-r { top: 0; right: 0; width: 12px; height: 100%; cursor: e-resize; }
+        .resizer-b { bottom: 0; left: 0; width: 100%; height: 12px; cursor: s-resize; }
+        .resizer-rb { 
+            bottom: 0; right: 0; width: 40px; height: 40px; cursor: nwse-resize; 
+            background: linear-gradient(135deg, transparent 70%, var(--color-hud-primary) 70%);
+            opacity: 0.6;
+        }
+
+        .hud-container {
+            width: 100%; height: 100%;
+            position: relative;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .hud-background {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border-default);
+            border-left: 2px solid var(--color-hud-primary);
+            backdrop-filter: blur(25px);
+            clip-path: polygon(0 0, 96% 0, 100% 4%, 100% 100%, 4% 100%, 0 96%);
+            z-index: -1;
+        }
+
+        .pattern-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
+            opacity: var(--pattern-opacity); transition: opacity 0.4s ease;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='none' stroke='%2300BFFF' stroke-width='0.5' stroke-opacity='0.4'/%3E%3C/svg%3E");
+            background-size: 30px 30px;
+            mask-image: radial-gradient(circle 140px at var(--mouse-x) var(--mouse-y), black 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+        }
+
+        /* Content Structure */
+        .content { 
+            position: relative; z-index: 5; 
+            display: flex; flex-direction: column; height: 100%; 
+            padding: 0.8rem 1.2rem;
+            gap: 0.2rem;
+        }
+
+        header { 
+            border-bottom: 1px solid var(--color-border-default); 
+            padding-bottom: 0.2rem; display: flex; justify-content: space-between; align-items: flex-end; 
+            flex-shrink: 0; pointer-events: auto;
+        }
+        
+        /* Clickable Settings Header */
+        h1 { 
+            font-family: var(--font-header); font-size: 1rem; letter-spacing: 2px; 
+            color: var(--color-hud-neutral); text-shadow: 0 0 8px var(--color-hud-primary); 
+            white-space: nowrap; cursor: pointer; transition: 0.2s;
+        }
+        h1:hover { color: #fff; text-shadow: 0 0 15px var(--color-hud-primary); }
+
+        .uptime { font-family: var(--font-tech); font-size: 0.8rem; color: var(--color-hud-primary-soft); opacity: 0.8; pointer-events: none; }
+
+        /* Layered Section */
+        .section { 
+            position: relative; 
+            display: flex; flex-direction: column; flex: 1; min-height: 0; 
+            margin: 0.2rem 0; background: var(--color-bg-panel);
+            overflow: hidden;
+            border: 1px solid transparent;
+            transition: all 0.3s;
+        }
+        .section:hover { background: var(--color-bg-panel-hover); border-color: var(--color-border-default); }
+
+        .section-text {
+            position: relative; z-index: 10;
+            padding: 0.4rem 0.6rem;
+            display: flex; flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .section-graph {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+            opacity: 0.7;
+        }
+
+        .block-header { display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: end; }
+        .label-left { font-size: 0.9rem; color: var(--color-hud-primary-soft); text-transform: uppercase; font-weight: 700; letter-spacing: 1.5px; }
+        .stats-mid { font-family: var(--font-tech); font-size: 1.1rem; font-weight: 700; text-align: center; color: var(--color-hud-neutral); }
+        .stats-right { font-family: var(--font-tech); font-size: 1rem; font-weight: 700; text-align: right; }
+        .details-sub { font-family: var(--font-tech); font-size: 0.85rem; color: rgba(255, 255, 255, 0.4); margin-top: -2px; }
+        
+        canvas { width: 100%; height: 100%; display: block; }
+
+        .io-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; flex-shrink: 0; padding-bottom: 0.2rem; }
+        .io-box { 
+            position: relative;
+            border: 1px solid var(--color-border-default); background: var(--color-bg-panel); 
+            padding: 0.3rem; display: flex; flex-direction: column; min-height: 40px; 
+            transition: all 0.3s;
+        }
+        .io-box:hover { background: var(--color-bg-panel-hover); }
+        .io-title { color: var(--color-hud-primary-soft); font-weight: 700; font-size: 0.7rem; border-bottom: 1px solid var(--color-border-default); margin-bottom: 2px; padding-bottom: 1px; z-index: 10; text-transform: uppercase; letter-spacing: 1px; }
+        .io-stats { font-family: var(--font-tech); display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem; color: var(--color-hud-neutral); z-index: 10; }
+    </style>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <!-- Top-level Resizers -->
+    <div class="resizer resizer-r" data-direction="Right"></div>
+    <div class="resizer resizer-b" data-direction="Bottom"></div>
+    <div class="resizer resizer-rb" data-direction="BottomRight"></div>
+
+    <div class="hud-container flicker-on-mount" id="main-container">
+        <div class="hud-background"></div>
+        <div class="pattern-layer" id="spotlight"></div>
+        
+        <div class="content">
+            <header>
+                <h1 id="open-settings">FLUX // SYSTEM STATS</h1>
+                <div class="uptime">SYSTEM UPTIME: <span id="uptime">00:00:00</span></div>
+            </header>
+            
+            <!-- CPU Layered -->
+            <div class="section" id="cpu-section">
+                <div class="section-graph"><canvas id="cpu-graph"></canvas></div>
+                <div class="section-text">
+                    <div class="block-header"><div class="label-left">CPU</div><div class="stats-mid" id="cpu-usage">0%</div><div class="stats-right" id="cpu-temp">0°C</div></div>
+                    <div class="details-sub" id="cpu-freq">0.0 GHz</div>
+                </div>
+            </div>
+
+            <!-- GPU Layered -->
+            <div class="section" id="gpu-section">
+                <div class="section-graph"><canvas id="gpu-graph"></canvas></div>
+                <div class="section-text">
+                    <div class="block-header"><div class="label-left">GPU</div><div class="stats-mid" id="gpu-usage-pct">0%</div><div class="stats-right" id="gpu-temp">0°C</div></div>
+                    <div class="details-sub" id="vram-info">0.0/0.0 GiB</div>
+                </div>
+            </div>
+
+            <!-- RAM Layered -->
+            <div class="section" id="ram-section">
+                <div class="section-graph"><canvas id="ram-graph"></canvas></div>
+                <div class="section-text">
+                    <div class="block-header"><div class="label-left">RAM</div><div class="stats-mid" id="ram-percentage">0%</div><div class="stats-right"></div></div>
+                    <div class="details-sub" id="ram-used">0.0/0.0 GiB</div>
+                </div>
+            </div>
+
+            <div class="io-grid">
+                <div class="io-box">
+                    <div class="section-graph"><canvas id="net-graph"></canvas></div>
+                    <div class="io-title">NETWORK</div>
+                    <div class="io-stats"><span id="net-in">IN: 0.0 B/s</span><span id="net-out">OUT: 0.0 B/s</span></div>
+                </div>
+                <div class="io-box">
+                    <div class="section-graph"><canvas id="disk-graph"></canvas></div>
+                    <div class="io-title">DISK</div>
+                    <div class="io-stats"><span id="disk-read">READ: 0.0 B/s</span><span id="disk-write">WRITE: 0.0 B/s</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="logic.js"></script>
+</body>
+</html>

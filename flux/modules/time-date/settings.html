@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CONFIGURE // CHRONOMETRY</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-hud-primary: #00BFFF;
+            --color-hud-primary-soft: #4FC3F7;
+            --color-hud-neutral: #E8EAED;
+            --color-hud-danger: #FF2020;
+            --color-bg-base: rgba(10, 15, 26, 0.95);
+            --color-bg-panel: rgba(0, 191, 255, 0.08);
+            --color-bg-panel-hover: rgba(0, 191, 255, 0.15);
+            --color-border-default: rgba(79, 195, 247, 0.45);
+            --font-main: 'Rajdhani', sans-serif;
+            --font-tech: 'Share Tech Mono', monospace;
+            --font-header: 'Orbitron', sans-serif;
+            --mouse-x: 50%; --mouse-y: 50%;
+            --pattern-opacity: 0;
+        }
+
+        html { font-size: 14px; height: 100%; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+        body {
+            background: transparent;
+            color: var(--color-hud-primary);
+            font-family: var(--font-main);
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            padding: 4px;
+        }
+
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%; opacity: 0.15;
+        }
+
+        .hud-container {
+            width: 100%; height: 100%;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border-default);
+            position: relative;
+            backdrop-filter: blur(25px);
+            clip-path: polygon(0 0, 96% 0, 100% 4%, 100% 100%, 4% 100%, 0 96%);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0, 191, 255, 0.15);
+        }
+
+        .pattern-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
+            opacity: var(--pattern-opacity); transition: opacity 0.4s ease;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='none' stroke='%2300BFFF' stroke-width='0.5' stroke-opacity='0.4'/%3E%3C/svg%3E");
+            background-size: 30px 30px;
+            mask-image: radial-gradient(circle 140px at var(--mouse-x) var(--mouse-y), black 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+        }
+
+        .content { position: relative; z-index: 5; display: flex; flex-direction: column; height: 100%; padding: 1rem 1.2rem; gap: 0.8rem; }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--color-border-default);
+            padding-bottom: 0.5rem;
+            flex-shrink: 0;
+        }
+        h2 { font-family: var(--font-header); font-size: 1rem; letter-spacing: 2px; color: var(--color-hud-neutral); }
+
+        .scroll-area { flex: 1; overflow-y: auto; padding-right: 4px; }
+        .category { margin-bottom: 1.2rem; }
+        .cat-title { font-size: 0.7rem; opacity: 0.6; letter-spacing: 2px; margin-bottom: 0.6rem; text-transform: uppercase; font-weight: 800; color: var(--color-hud-primary-soft); border-left: 2px solid var(--color-hud-primary); padding-left: 6px; }
+        
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; padding: 0.4rem 0.6rem; background: var(--color-bg-panel); border: 1px solid transparent; transition: all 0.2s; }
+        .row:hover { background: var(--color-bg-panel-hover); border-color: var(--color-border-default); }
+        label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--color-hud-primary-soft); }
+        
+        select, input[type="text"], input[type="number"] { 
+            background: #000; border: 1px solid var(--color-border-default); color: #fff; 
+            padding: 4px 8px; font-family: var(--font-tech); font-size: 0.8rem; outline: none;
+        }
+        input[type="range"] { accent-color: var(--color-hud-primary); cursor: pointer; width: 100px; }
+
+        .toggle { position: relative; display: inline-block; width: 44px; height: 20px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.1); transition: .4s; border: 1px solid var(--color-border-default); }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: var(--color-hud-primary-soft); transition: .4s; }
+        input:checked + .slider { background-color: rgba(0, 191, 255, 0.2); }
+        input:checked + .slider:before { transform: translateX(24px); background-color: var(--color-hud-primary); }
+
+        .close-btn { 
+            cursor: pointer !important; color: #fff; background: var(--color-hud-danger);
+            font-family: var(--font-tech); font-weight: bold; font-size: 1.1rem; 
+            width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+            transition: 0.2s; pointer-events: auto;
+        }
+        .close-btn:hover { background: #ff5252; box-shadow: 0 0 10px var(--color-hud-danger); }
+
+        .footer-note { padding-top: 0.5rem; font-size: 0.65rem; opacity: 0.4; border-top: 1px solid var(--color-border-default); font-family: var(--font-tech); }
+
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: var(--color-border-default); }
+
+        .resizer { position: absolute; background: transparent; z-index: 1000; pointer-events: auto; }
+        .resizer-rb { bottom: 0; right: 0; width: 20px; height: 20px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--color-hud-primary) 50%); opacity: 0.4; }
+    </style>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div class="hud-container" id="main-container">
+        <div class="pattern-layer" id="spotlight"></div>
+        <div class="resizer resizer-rb" data-direction="BottomRight"></div>
+
+        <div class="content">
+            <header id="drag-header">
+                <h2>CONFIGURE // CHRONO</h2>
+                <div class="close-btn" id="close-btn">X</div>
+            </header>
+
+            <div class="scroll-area">
+                <div class="category">
+                    <div class="cat-title">Temporal Optics</div>
+                    <div class="row">
+                        <label>24-Hour Format</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="cfg-format-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label>Show UTC Header</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="cfg-utc-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label>Mission Timer</label>
+                        <label class="toggle">
+                            <input type="checkbox" id="cfg-mission-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="category">
+                    <div class="cat-title">Interface Optics</div>
+                    <div class="row">
+                        <label>Background Alpha</label>
+                        <input type="range" id="cfg-bg-alpha" min="5" max="100">
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-note">SYNCED // TEMPORAL PARAMETERS SAVED</div>
+        </div>
+    </div>
+
+    <script type="module">
+        const { invoke } = window.__TAURI__.core;
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const appWindow = getCurrentWindow();
+
+        const DEFAULT_STATE = {
+            format: "12h",
+            bgAlpha: 90,
+            showUTC: true,
+            showMissionTime: true
+        };
+
+        let state = JSON.parse(localStorage.getItem("flux_time_state")) || DEFAULT_STATE;
+
+        function syncUI() {
+            document.getElementById("cfg-format-toggle").checked = state.format === "24h";
+            document.getElementById("cfg-utc-toggle").checked = state.showUTC;
+            document.getElementById("cfg-mission-toggle").checked = state.showMissionTime;
+            document.getElementById("cfg-bg-alpha").value = state.bgAlpha;
+        }
+
+        function save() {
+            state.format = document.getElementById("cfg-format-toggle").checked ? "24h" : "12h";
+            state.showUTC = document.getElementById("cfg-utc-toggle").checked;
+            state.showMissionTime = document.getElementById("cfg-mission-toggle").checked;
+            state.bgAlpha = parseInt(document.getElementById("cfg-bg-alpha").value);
+
+            localStorage.setItem("flux_time_state", JSON.stringify(state));
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        document.querySelectorAll("input").forEach(el => el.oninput = save);
+
+        // Spotlight
+        const container = document.getElementById("main-container");
+        window.addEventListener("mousemove", (e) => {
+            const rect = container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            container.style.setProperty("--mouse-x", `${x}px`);
+            container.style.setProperty("--mouse-y", `${y}px`);
+            container.style.setProperty("--pattern-opacity", "1");
+        });
+
+        document.getElementById("drag-header").onmousedown = (e) => {
+            if (e.target.id !== "close-btn") invoke("drag_window");
+        };
+        
+        document.querySelector(".resizer-rb").onmousedown = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            appWindow.startResizing("BottomRight");
+        };
+
+        const closeBtn = document.getElementById("close-btn");
+        closeBtn.onclick = async (e) => {
+            e.stopPropagation();
+            await invoke("close_window");
+        };
+
+        syncUI();
+    </script>
+</body>
+</html>

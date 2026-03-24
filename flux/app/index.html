@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLUX // COMMAND CENTER</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="src/chiral-theme.css">
+    <style>
+        body {
+            width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            padding: 4px;
+        }
+
+        .hud-container {
+            width: 100%; height: 100%;
+            padding: 1rem 1.2rem;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        .content { position: relative; z-index: 5; pointer-events: none; display: flex; flex-direction: column; height: 100%; }
+
+        header { 
+            border-bottom: 1px solid var(--color-border-default); 
+            padding-bottom: 0.4rem; 
+            display: flex; justify-content: space-between; align-items: flex-end; 
+            flex-shrink: 0; margin-bottom: 1rem;
+        }
+        h1 { font-family: var(--font-header); font-size: 1.1rem; letter-spacing: 2px; color: var(--color-hud-neutral); text-shadow: 0 0 8px var(--color-hud-primary); }
+
+        .module-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.8rem; pointer-events: auto; }
+        .module-card { background: var(--color-bg-panel); border: 1px solid var(--color-border-default); padding: 1rem; display: grid; grid-template-columns: 1fr auto; align-items: center; transition: all 0.3s; pointer-events: auto; }
+        .module-card:hover { background: var(--color-bg-panel-hover); border-color: var(--color-hud-primary); }
+        .module-info h3 { font-size: 1.1rem; color: var(--color-hud-neutral); text-transform: uppercase; }
+        .module-info p { font-size: 0.8rem; color: var(--color-hud-primary-soft); opacity: 0.7; }
+
+        .toggle-btn { background: transparent; border: 1px solid var(--color-hud-primary); color: var(--color-hud-primary); padding: 0.5rem 1.5rem; font-family: var(--font-tech); cursor: pointer !important; transition: 0.2s; }
+        .toggle-btn.active { background: var(--color-hud-primary); color: #0A0F1A; box-shadow: 0 0 10px var(--color-hud-primary); }
+
+        footer { 
+            border-top: 1px solid var(--color-border-default); padding-top: 0.6rem; 
+            display: flex; justify-content: flex-end; align-items: center;
+            font-size: 0.8rem; font-family: var(--font-tech); pointer-events: auto;
+        }
+
+        .transparency-ctrl { display: flex; align-items: center; gap: 10px; color: var(--color-hud-primary-soft); opacity: 0.8; }
+        .transparency-ctrl input { cursor: pointer !important; accent-color: var(--color-hud-primary); width: 100px; }
+
+        .close-btn { 
+            background: transparent; 
+            border: 1px solid var(--color-hud-danger); 
+            color: var(--color-hud-danger); 
+            width: 20px; height: 20px; 
+            display: flex; justify-content: center; align-items: center; 
+            cursor: pointer !important; 
+            font-size: 1.1rem; 
+            line-height: 1; 
+            transition: 0.2s; 
+            margin-bottom: 2px;
+            flex-shrink: 0;
+            pointer-events: auto;
+        }
+        .close-btn:hover { 
+            background: var(--color-hud-danger); 
+            color: #0A0F1A; 
+            box-shadow: 0 0 10px var(--color-hud-danger); 
+        }
+    </style>
+</head>
+<body>
+    <div class="hud-container flicker-on-mount" id="main-container">
+        <div class="pattern-layer" id="spotlight"></div>
+        <div class="scanlines"></div>
+        <div class="resizer resizer-r" data-direction="Right"></div>
+        <div class="resizer resizer-b" data-direction="Bottom"></div>
+        <div class="resizer resizer-rb" data-direction="BottomRight"></div>
+
+        <div class="content">
+            <header>
+                <h1>FLUX // COMMAND</h1>
+                <button class="close-btn" id="close-btn" title="HIDE INTERFACE">×</button>
+            </header>
+            <div class="module-list" id="module-list"></div>
+            <footer>
+                <div class="transparency-ctrl">
+                    <span>OPACITY</span>
+                    <input type="range" id="bg-opacity" min="10" max="100" value="95">
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script type="module">
+        const { invoke } = window.__TAURI__.core;
+        const { getCurrentWindow } = window.__TAURI__.window;
+        const appWindow = getCurrentWindow();
+
+        async function loadModules() {
+            const modules = await invoke("list_modules");
+            const listEl = document.getElementById("module-list");
+            listEl.innerHTML = "";
+            modules.forEach(mod => {
+                const card = document.createElement("div");
+                card.className = "module-card";
+                card.innerHTML = `
+                    <div class="module-info">
+                        <h3>${mod.name}</h3>
+                        <p>${mod.author} // v${mod.version}</p>
+                    </div>
+                    <button class="toggle-btn ${mod.active ? 'active' : ''}" 
+                            id="btn-${mod.id}" 
+                            aria-label="${mod.active ? 'Deactivate' : 'Initialize'} ${mod.name} module">
+                        ${mod.active ? 'DEACTIVATE' : 'INITIALIZE'}
+                    </button>
+                `;
+                listEl.appendChild(card);
+                document.getElementById(`btn-${mod.id}`).onclick = async (e) => {
+                    e.stopPropagation();
+                    await invoke("toggle_module", { id: mod.id });
+                    loadModules();
+                };
+            });
+        }
+
+        // Spotlight & Fade
+        const container = document.getElementById("main-container");
+        window.addEventListener("mousemove", (e) => {
+            const rect = container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            container.style.setProperty("--mouse-x", `${x}px`);
+            container.style.setProperty("--mouse-y", `${y}px`);
+            const buffer = 2;
+            const isInside = (e.clientX >= rect.left + buffer && e.clientX <= rect.right - buffer && e.clientY >= rect.top + buffer && e.clientY <= rect.bottom - buffer);
+            container.style.setProperty("--pattern-opacity", isInside ? "1" : "0");
+        });
+
+        // Background Transparency
+        const opacityInput = document.getElementById("bg-opacity");
+        const closeBtn = document.getElementById("close-btn");
+        closeBtn.onclick = () => appWindow.hide();
+
+        const savedOpacity = localStorage.getItem("flux_cmd_opacity") || "95";
+        opacityInput.value = savedOpacity;
+        document.documentElement.style.setProperty("--color-bg-base", `rgba(10, 15, 26, ${savedOpacity/100})`);
+        opacityInput.oninput = (e) => {
+            const val = e.target.value;
+            document.documentElement.style.setProperty("--color-bg-base", `rgba(10, 15, 26, ${val/100})`);
+            localStorage.setItem("flux_cmd_opacity", val);
+        };
+
+        // Improved Drag & Resize
+        container.addEventListener("mousedown", (e) => {
+            const target = e.target;
+            // Drag if background, pattern, header, or module info text
+            if (
+                target.id === "main-container" || 
+                target.id === "spotlight" || 
+                target.closest("header") || 
+                target.closest(".module-info") ||
+                target.closest("footer")
+            ) {
+                if (!target.classList.contains("resizer") && target.tagName !== "BUTTON" && target.tagName !== "INPUT") {
+                    invoke("drag_window");
+                }
+            }
+        });
+
+        document.querySelectorAll(".resizer").forEach(r => {
+            r.onmousedown = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const dir = r.dataset.direction;
+                if (dir) appWindow.startResizing(dir);
+            };
+        });
+
+        loadModules();
+        setInterval(loadModules, 5000);
+    </script>
+</body>
+</html>

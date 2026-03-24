@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLUX // WEATHER REPORT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-hud-primary: #00BFFF;
+            --color-hud-primary-soft: #4FC3F7;
+            --color-hud-neutral: #E8EAED;
+            --color-hud-safe: #39FF14;
+            --color-hud-caution: #FFC107;
+            --color-hud-alert: #FF6B1A;
+            --color-hud-danger: #FF2020;
+            --color-hud-chiral: #9B59B6;
+            --color-bg-base: rgba(10, 15, 26, 0.90);
+            --color-bg-panel: rgba(0, 191, 255, 0.10);
+            --color-bg-panel-hover: rgba(0, 191, 255, 0.18);
+            --color-border-default: rgba(79, 195, 247, 0.45);
+            --font-main: 'Rajdhani', sans-serif;
+            --font-tech: 'Share Tech Mono', monospace;
+            --font-header: 'Orbitron', sans-serif;
+            --mouse-x: 50%; --mouse-y: 50%;
+            --pattern-opacity: 0;
+        }
+
+        html { font-size: 14px; height: 100%; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+        body {
+            background: transparent;
+            color: var(--color-hud-primary);
+            font-family: var(--font-main);
+            width: 100vw; height: 100vh;
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
+            padding: 4px;
+        }
+
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%; opacity: 0.15;
+        }
+
+        .hud-container {
+            width: 100%; height: 100%;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border-default);
+            position: relative;
+            backdrop-filter: blur(25px);
+            clip-path: polygon(0 0, 96% 0, 100% 4%, 100% 100%, 4% 100%, 0 96%);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0, 191, 255, 0.15);
+        }
+
+        .pattern-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
+            opacity: var(--pattern-opacity); transition: opacity 0.4s ease;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='none' stroke='%2300BFFF' stroke-width='0.5' stroke-opacity='0.4'/%3E%3C/svg%3E");
+            background-size: 30px 30px;
+            mask-image: radial-gradient(circle 140px at var(--mouse-x) var(--mouse-y), black 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+        }
+
+        .content { 
+            position: relative; z-index: 5; 
+            display: flex; flex-direction: column; 
+            height: 100%; 
+            padding: 0.8rem 1rem; 
+            gap: 0.6rem; 
+            min-height: 0;
+        }
+
+        header { 
+            border-bottom: 1px solid var(--color-border-default); 
+            padding-bottom: 0.2rem; display: flex; justify-content: space-between; align-items: flex-end; 
+            flex-shrink: 0; pointer-events: auto;
+        }
+        
+        h1 { 
+            font-family: var(--font-header); font-size: 1rem; letter-spacing: 2px; 
+            color: var(--color-hud-neutral); text-shadow: 0 0 8px var(--color-hud-primary); 
+            white-space: nowrap; cursor: pointer; transition: 0.2s;
+        }
+        h1:hover { color: #fff; text-shadow: 0 0 15px var(--color-hud-primary); }
+
+        .header-time { font-family: var(--font-tech); font-size: 0.85rem; color: var(--color-hud-primary-soft); opacity: 0.8; }
+
+        /* Icons made white as requested */
+        .weather-icon { filter: brightness(0) invert(1); transition: all 0.3s ease; }
+
+        @keyframes glitch-chromatic {
+            0% { transform: translate(0); filter: brightness(0) invert(1); }
+            20% { transform: translate(-1px, 1px); filter: brightness(0) invert(1) drop-shadow(1px 0 #ff0000) drop-shadow(-1px 0 #00ffff); }
+            40% { transform: translate(1px, -1px); filter: brightness(0) invert(1) drop-shadow(-1px 0 #ff00ff) drop-shadow(1px 0 #ffff00); }
+            60% { transform: translate(-1px, -1px); filter: brightness(0) invert(1) drop-shadow(1px 1px #ff0000); }
+            80% { transform: translate(1px, 1px); filter: brightness(0) invert(1) drop-shadow(-1px -1px #00ffff); }
+            100% { transform: translate(0); filter: brightness(0) invert(1); }
+        }
+        .glitching { animation: glitch-chromatic 0.25s ease-in-out; }
+
+        .weather-top { 
+            display: grid; 
+            grid-template-columns: 1.2fr 3.5fr 0.8fr; 
+            gap: 1rem; 
+            flex-shrink: 0; 
+            min-height: 100px;
+        }
+        .current-weather { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+        .current-main { display: flex; align-items: center; gap: 0.5rem; }
+        .main-icon { width: 60px; height: 60px; }
+        .main-temp { font-family: var(--font-tech); font-size: 3.5rem; color: var(--color-hud-neutral); line-height: 1; position: relative; }
+        .main-temp::after { content: var(--unit-temp, "F"); font-size: 1.2rem; position: absolute; top: 0.5rem; right: -1.2rem; color: var(--color-hud-primary-soft); }
+        .current-cond { color: var(--color-hud-primary); font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; font-size: 1.1rem; }
+
+        .hourly-container { 
+            background: var(--color-bg-panel); 
+            border: 1px solid var(--color-border-default); 
+            padding: 0.4rem; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            overflow: hidden; 
+            position: relative;
+            height: 100%;
+        }
+        
+        /* Fixed NOW Marker */
+        .hourly-container::after {
+            content: "NOW";
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: var(--font-tech);
+            font-size: 0.6rem;
+            color: var(--color-hud-neutral);
+            background: var(--color-hud-primary);
+            padding: 1px 4px;
+            z-index: 20;
+            letter-spacing: 1px;
+            clip-path: polygon(0 0, 100% 0, 100% 80%, 50% 100%, 0 80%);
+        }
+
+        /* NOW Timeframe Bracket */
+        .hourly-container::before {
+            content: "";
+            position: absolute;
+            top: 18px; /* Start below the NOW tag */
+            left: 50%;
+            width: 50px; /* Match itemWidth from logic.js */
+            height: calc(100% - 22px);
+            transform: translateX(-50%);
+            border: 1px solid var(--color-hud-primary);
+            border-top: none;
+            opacity: 0.3;
+            z-index: 15;
+            pointer-events: none;
+            box-shadow: inset 0 0 10px rgba(0, 191, 255, 0.1);
+        }
+
+        .hourly-grid { 
+            display: flex; 
+            align-items: end; 
+            height: 100%; 
+            position: absolute;
+            left: 50%;
+            will-change: transform;
+            z-index: 10;
+            padding-bottom: 4px;
+        }
+        .hourly-item { 
+            display: flex; flex-direction: column; align-items: center; gap: 4px; 
+            transition: opacity 0.3s ease; 
+            opacity: 0.4;
+            width: 50px; 
+            flex-shrink: 0;
+        }
+        .hourly-item.active { opacity: 1; }
+        .hourly-temp { font-family: var(--font-tech); font-size: 0.8rem; font-weight: 700; color: var(--color-hud-neutral); }
+        .hourly-icon { width: 18px; height: 18px; }
+        .hourly-bar { width: 100%; background: var(--color-hud-primary); opacity: 0.3; min-height: 30px; transition: height 0.3s ease; }
+        .hourly-time { font-family: var(--font-tech); font-size: 0.65rem; color: var(--color-hud-primary-soft); opacity: 0.6; }
+
+        .side-stats { display: flex; flex-direction: column; justify-content: center; gap: 6px; border-left: 1px solid var(--color-border-default); padding-left: 1rem; }
+        .stat-line { display: flex; justify-content: space-between; font-family: var(--font-tech); font-size: 0.9rem; }
+        .stat-label { color: var(--color-hud-primary-soft); opacity: 0.7; font-size: 0.75rem; text-transform: uppercase; }
+
+        .env-grid { 
+            display: grid; 
+            grid-template-columns: repeat(5, 1fr); 
+            gap: 0.4rem; 
+            flex-shrink: 0; 
+        }
+        .env-box { border: 1px solid var(--color-border-default); background: var(--color-bg-panel); padding: 0.6rem; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.3s; }
+        .env-box:hover { background: var(--color-bg-panel-hover); border-color: var(--color-border-active); }
+        .env-icon { width: 24px; height: 24px; }
+        .env-label { font-size: 0.7rem; color: var(--color-hud-primary-soft); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        .env-value { font-family: var(--font-tech); font-size: 1rem; font-weight: 700; color: var(--color-hud-neutral); }
+
+        .forecast-section { 
+            border-top: 1px solid var(--color-border-default); 
+            padding-top: 0.6rem; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 0.4rem; 
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .forecast-label { font-family: var(--font-header); font-size: 0.8rem; letter-spacing: 2px; color: var(--color-hud-primary-soft); display: flex; align-items: center; gap: 0.5rem; }
+        .forecast-grid { 
+            display: grid; 
+            grid-template-columns: repeat(7, 1fr); 
+            gap: 4px; 
+            overflow-y: auto;
+            flex: 1;
+        }
+        .forecast-day { display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.3s; padding: 4px; border-radius: 2px; }
+        .forecast-day:hover { background: var(--color-bg-panel); }
+        .day-name { font-size: 0.8rem; color: var(--color-hud-primary-soft); text-transform: uppercase; font-weight: 700; }
+        .day-icon { width: 22px; height: 22px; }
+        .day-temps { font-family: var(--font-tech); font-size: 0.85rem; font-weight: 700; color: var(--color-hud-neutral); }
+        .temp-min { opacity: 0.4; font-size: 0.7rem; margin-left: 2px; }
+
+        .weather-footer { 
+            border-top: 1px solid var(--color-border-default); 
+            padding-top: 0.4rem; 
+            display: flex; justify-content: center; align-items: center; 
+            font-family: var(--font-tech); font-size: 0.7rem; color: var(--color-hud-primary-soft); 
+            opacity: 0.8;
+            gap: 1rem;
+            flex-shrink: 0;
+            pointer-events: auto;
+        }
+        
+        .location-tag { color: var(--color-hud-primary); font-weight: 700; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 1px; }
+
+        .resizer { position: absolute; background: transparent; z-index: 1000; pointer-events: auto; }
+        .resizer-r { top: 0; right: 0; width: 10px; height: 100%; cursor: e-resize; }
+        .resizer-b { bottom: 0; left: 0; width: 10px; height: 10px; cursor: s-resize; }
+        .resizer-rb { bottom: 0; right: 0; width: 20px; height: 20px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--color-hud-primary) 50%); }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div class="hud-container flicker-on-mount" id="main-container">
+        <div class="pattern-layer" id="spotlight"></div>
+        <div class="resizer resizer-r" data-direction="Right"></div>
+        <div class="resizer resizer-b" data-direction="Bottom"></div>
+        <div class="resizer resizer-rb" data-direction="BottomRight"></div>
+
+        <div class="content">
+            <header>
+                <h1 id="open-settings">FLUX // WEATHER REPORT</h1>
+                <div class="header-time" id="header-time">--/--/---- --:-- --</div>
+            </header>
+
+            <div class="weather-top">
+                <div class="current-weather">
+                    <div class="current-main">
+                        <img src="assets/icons/sun.svg" class="main-icon weather-icon" id="main-icon">
+                        <span class="main-temp" id="main-temp">--</span>
+                    </div>
+                    <span class="current-cond" id="main-cond">--</span>
+                    <div id="timefall-warning" style="margin-top: 0.4rem; font-family: var(--font-tech); font-size: 0.75rem; color: var(--color-hud-danger); display: none; animation: pulse 1s infinite;">
+                        WARNING: TIMEFALL ACTIVE
+                    </div>
+                </div>
+                <div class="hourly-container"><div class="hourly-grid" id="hourly-grid"></div></div>
+                <div class="side-stats">
+                    <div class="stat-line"><span class="stat-label">HI</span><span id="stat-hi">--°</span></div>
+                    <div class="stat-line"><span class="stat-label">LO</span><span id="stat-lo">--°</span></div>
+                    <div class="stat-line"><span class="stat-label">FL</span><span id="stat-fl">--°</span></div>
+                </div>
+            </div>
+
+            <div class="env-grid">
+                <div class="env-box" title="Wind Speed and Direction"><img src="assets/icons/wind-01.svg" id="icon-wind" class="env-icon weather-icon"><span class="env-label">Wind</span><span class="env-value" id="env-wind">--</span></div>
+                <div class="env-box" title="Air Humidity Percentage"><img src="assets/icons/droplets-01.svg" id="icon-humidity" class="env-icon weather-icon"><span class="env-label">Humidity</span><span class="env-value" id="env-humidity">--</span></div>
+                <div class="env-box" title="Ultraviolet Index"><img src="assets/icons/sun.svg" id="icon-uv" class="env-icon weather-icon"><span class="env-label">UV Index</span><span class="env-value" id="env-uv">--</span></div>
+                <div class="env-box" title="Precipitation Probability"><img src="assets/icons/umbrella-01.svg" id="icon-precip" class="env-icon weather-icon"><span class="env-label">Precip</span><span class="env-value" id="env-precip">--</span></div>
+                <div class="env-box" title="Visual Distance Range"><img src="assets/icons/thermometer-01.svg" id="icon-visibility" class="env-icon weather-icon"><span class="env-label">Visibility</span><span class="env-value" id="env-visibility">--</span></div>
+            </div>
+
+            <div class="forecast-section">
+                <div class="forecast-label">PROJECTION // 7-DAY</div>
+                <div class="forecast-grid" id="forecast-grid"></div>
+            </div>
+
+            <div class="weather-footer">
+                <div class="location-tag">ALAMOSA // CO</div>
+                <span>STATION // KCOALAM056</span>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="logic.js"></script>
+</body>
+</html>

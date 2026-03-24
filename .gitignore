@@ -1,0 +1,21 @@
+# Rust build artifacts
+flux/app/src-tauri/target/
+
+# Node / frontend
+flux/app/node_modules/
+flux/app/dist/
+flux/website/node_modules/
+
+# Tauri build output
+flux/app/src-tauri/gen/
+
+# Personal / machine-specific
+flux/window_state.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Obsidian
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json

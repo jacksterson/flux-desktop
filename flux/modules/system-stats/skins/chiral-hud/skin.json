@@ -1,0 +1,33 @@
+{
+  "name": "Chiral HUD v2",
+  "author": "Jack",
+  "version": "1.0.0",
+  "theme": {
+    "primary": "#00BFFF",
+    "primary_soft": "#4FC3F7",
+    "neutral": "#E8EAED",
+    "safe": "#39FF14",
+    "caution": "#FFC107",
+    "alert": "#FF6B1A",
+    "danger": "#FF2020",
+    "chiral": "#9B59B6",
+    "reward": "#D4AF37",
+    "bg_base": "#0A0F1A",
+    "bg_panel": "rgba(0, 191, 255, 0.10)",
+    "border_default": "rgba(79, 195, 247, 0.45)",
+    "font_main": "Rajdhani, JetBrainsMono Nerd Font",
+    "font_tech": "Share Tech Mono",
+    "font_header": "Orbitron"
+  },
+  "modules": [
+    {
+      "id": "system-stats",
+      "name": "System Stats",
+      "enabled": true,
+      "config": {
+        "showFrequency": true,
+        "showGraphs": true
+      }
+    }
+  ]
+}

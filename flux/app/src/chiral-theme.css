@@ -1,0 +1,154 @@
+:root {
+  /* === BASE PALETTE === */
+  --color-hud-primary:        #00BFFF;  /* Cyan Blue     — default UI base            */
+  --color-hud-primary-soft:   #4FC3F7;  /* Ice Blue      — secondary panels, subtext  */
+  --color-hud-neutral:        #E8EAED;  /* Silver White  — selected items, active text */
+  --color-hud-safe:           #39FF14;  /* Signal Green  — confirmed / OK states       */
+  --color-hud-caution:        #FFC107;  /* Amber Yellow  — warning, degraded state     */
+  --color-hud-alert:          #FF6B1A;  /* Bridges Orange— urgent alerts, brand accent */
+  --color-hud-danger:         #FF2020;  /* Critical Red  — danger, hostile zones       */
+  --color-hud-chiral:         #9B59B6;  /* Chiral Purple — special / dimensional FX    */
+  --color-hud-reward:         #D4AF37;  /* Chiral Gold   — rewards, premium events     */
+
+  /* === BACKGROUNDS === */
+  --color-bg-base:            rgba(10, 15, 26, 0.95);  /* Deep navy-black — widget base background    */
+  --color-bg-panel:           rgba(0, 191, 255, 0.10);
+  --color-bg-panel-hover:     rgba(0, 191, 255, 0.18);
+  --color-bg-overlay:         rgba(10, 15, 26, 0.75);
+
+  /* === BORDERS === */
+  --color-border-default:     rgba(79, 195, 247, 0.45);
+  --color-border-active:      rgba(0, 191, 255, 0.85);
+  --color-border-danger:      rgba(255, 32, 32, 0.70);
+
+  /* === FONTS === */
+  --font-main:                'Rajdhani', sans-serif;
+  --font-tech:                'Share Tech Mono', monospace;
+  --font-header:              'Orbitron', sans-serif;
+
+  /* === INTERACTION === */
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+  --pattern-opacity: 0;
+}
+
+/* Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none !important;
+  cursor: default !important;
+}
+
+body {
+  background: transparent;
+  color: var(--color-hud-primary);
+  font-family: var(--font-main);
+  overflow: hidden;
+}
+
+/* Chiral HUD Container */
+.hud-container {
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-default);
+  position: relative;
+  backdrop-filter: blur(25px);
+  clip-path: polygon(0 0, 96% 0, 100% 4%, 100% 100%, 4% 100%, 0 96%);
+  box-shadow: 0 0 15px rgba(0, 191, 255, 0.15);
+  transition: box-shadow 0.3s ease;
+}
+
+.hud-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-hud-primary), transparent);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Pattern Layer */
+.pattern-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: var(--pattern-opacity);
+  transition: opacity 0.4s ease;
+  background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='none' stroke='%2300BFFF' stroke-width='0.5' stroke-opacity='0.4'/%3E%3C/svg%3E");
+  background-size: 30px 30px;
+  mask-image: radial-gradient(circle 140px at var(--mouse-x) var(--mouse-y), black 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+}
+
+/* Typography Helpers */
+.font-tech { font-family: var(--font-tech); }
+.font-header { font-family: var(--font-header); }
+
+/* Resizers */
+.resizer {
+  position: absolute;
+  background: transparent;
+  z-index: 1000;
+  pointer-events: auto;
+}
+.resizer-r { top: 0; right: 0; width: 10px; height: 100%; cursor: e-resize !important; }
+.resizer-b { bottom: 0; left: 0; width: 100%; height: 10px; cursor: s-resize !important; }
+.resizer-rb {
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize !important;
+  background: linear-gradient(135deg, transparent 50%, var(--color-hud-primary) 50%);
+  opacity: 0.6;
+}
+.resizer-rb:hover { opacity: 1; }
+
+/* Effects */
+.scanlines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.1) 50%
+  ),
+  linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.03),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.03)
+  );
+  background-size: 100% 3px, 3px 100%;
+  opacity: 0.2;
+}
+
+@keyframes flicker {
+  0% { opacity: 0.8; }
+  5% { opacity: 0.9; }
+  10% { opacity: 0.8; }
+  15% { opacity: 1; }
+  20% { opacity: 0.8; }
+  25% { opacity: 0.9; }
+  30% { opacity: 1; }
+  70% { opacity: 1; }
+  72% { opacity: 0.8; }
+  75% { opacity: 0.9; }
+  77% { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+.flicker-on-mount {
+  animation: flicker 0.3s ease-in-out;
+}

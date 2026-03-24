@@ -1,0 +1,391 @@
+use sysinfo::{System, Components, Networks, CpuRefreshKind, RefreshKind};
+use std::sync::Mutex;
+use tauri::{State, Window, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+use nvml_wrapper::Nvml;
+use std::time::Instant;
+use std::fs;
+use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// --- Discovery Types ---
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleWindowConfig {
+    pub width: f64,
+    pub height: f64,
+    pub transparent: bool,
+    pub decorations: bool,
+    pub always_on_top: bool,
+    pub resizable: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleManifest {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub version: String,
+    pub entry: String,
+    pub window: ModuleWindowConfig,
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub active: bool,
+}
+
+// --- Window State Persistence ---
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct WindowBounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct PersistentState {
+    pub windows: HashMap<String, WindowBounds>,
+}
+
+impl PersistentState {
+    fn load() -> Self {
+        let path = PathBuf::from("/home/jack/bridgegap/flux/window_state.json");
+        if let Ok(content) = fs::read_to_string(path) {
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            Self::default()
+        }
+    }
+
+    fn save(&self) {
+        let path = PathBuf::from("/home/jack/bridgegap/flux/window_state.json");
+        if let Ok(content) = serde_json::to_string_pretty(self) {
+            let _ = fs::write(path, content);
+        }
+    }
+}
+
+// --- Engine State ---
+pub struct AppState {
+    pub sys: Mutex<System>,
+    pub nvml: Option<Nvml>,
+    pub last_net_io: Mutex<(u64, u64, Instant)>,
+    pub last_disk_io: Mutex<(u64, u64, Instant)>,
+    pub active_modules: Mutex<HashMap<String, ModuleManifest>>,
+    pub persistent: Mutex<PersistentState>,
+}
+
+#[derive(Serialize)]
+pub struct GpuStats { usage: u32, vram_used: u64, vram_total: u64, vram_percentage: f32, temp: f32 }
+
+#[derive(Serialize)]
+pub struct SystemStats {
+    cpu_usage: f32, cpu_temp: f32, cpu_freq: u64, ram_used: u64, ram_total: u64, ram_percentage: f32,
+    uptime: String, net_in: u64, net_out: u64, disk_read: u64, disk_write: u64, gpu: Option<GpuStats>,
+}
+
+// --- Commands ---
+
+#[tauri::command]
+fn list_modules(state: State<'_, AppState>) -> Vec<ModuleManifest> {
+    let mut modules = Vec::new();
+    let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
+    if let Ok(entries) = fs::read_dir(&modules_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let manifest_path = path.join("module.json");
+                if let Ok(content) = fs::read_to_string(&manifest_path) {
+                    if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
+                        let active_map = state.active_modules.lock().unwrap();
+                        manifest.active = active_map.contains_key(&manifest.id);
+                        modules.push(manifest);
+                    }
+                }
+            }
+        }
+    }
+    modules
+}
+
+fn track_window(window: WebviewWindow) {
+    let app_handle = window.app_handle().clone();
+    let label = window.label().to_string();
+    let w = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
+            let app_state = app_handle.state::<AppState>();
+            if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+                let mut p = app_state.persistent.lock().unwrap();
+                p.windows.insert(label.clone(), WindowBounds {
+                    x: pos.x as f64,
+                    y: pos.y as f64,
+                    width: size.width as f64,
+                    height: size.height as f64,
+                });
+                p.save();
+            }
+        }
+    });
+}
+
+#[tauri::command]
+async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let mut active_map = state.active_modules.lock().unwrap();
+    if let Some(_existing) = active_map.remove(&id) {
+        if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
+        if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
+    } else {
+        let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
+        let manifest_path = modules_path.join(&id).join("module.json");
+        if let Ok(content) = fs::read_to_string(&manifest_path) {
+            if let Ok(manifest) = serde_json::from_str::<ModuleManifest>(&content) {
+                let win_config = &manifest.window;
+                let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/{}", id, manifest.entry).parse().unwrap());
+                
+                let p = state.persistent.lock().unwrap();
+                let saved = p.windows.get(&id);
+
+                let mut builder = WebviewWindowBuilder::new(&app, &id, url)
+                    .title(&manifest.name)
+                    .transparent(win_config.transparent)
+                    .decorations(win_config.decorations)
+                    .always_on_top(win_config.always_on_top)
+                    .resizable(win_config.resizable)
+                    .skip_taskbar(true)
+                    .shadow(false);
+
+                if let Some(b) = saved {
+                    builder = builder
+                        .position(b.x, b.y)
+                        .inner_size(b.width, b.height);
+                } else {
+                    builder = builder.inner_size(win_config.width, win_config.height);
+                }
+
+                let window = builder.build().map_err(|e| e.to_string())?;
+                
+                // Force physical restore if saved
+                if let Some(b) = saved {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
+                    let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+                }
+                
+                track_window(window);
+                active_map.insert(id.clone(), manifest.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> {
+    let settings_id = format!("{}-settings", id);
+    if let Some(win) = app.get_webview_window(&settings_id) {
+        let _ = win.show();
+        let _ = win.set_focus();
+    } else {
+        let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/settings.html", id).parse().unwrap());
+        let app_state = app.state::<AppState>();
+        let p = app_state.persistent.lock().unwrap();
+        let saved = p.windows.get(&settings_id);
+
+        let mut builder = WebviewWindowBuilder::new(&app, &settings_id, url)
+            .title(format!("Configure // {}", id))
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            .resizable(true)
+            .skip_taskbar(true)
+            .shadow(false);
+
+        if let Some(b) = saved {
+            builder = builder
+                .position(b.x, b.y)
+                .inner_size(b.width, b.height);
+        } else {
+            builder = builder.inner_size(350.0, 500.0);
+        }
+
+        let window = builder.build().map_err(|e| e.to_string())?;
+        
+        // Force physical restore if saved
+        if let Some(b) = saved {
+            let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
+            let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+        }
+
+        track_window(window);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_window(window: Window) {
+    let _ = window.close();
+}
+
+#[tauri::command]
+fn drag_window(window: Window) { let _ = window.start_dragging(); }
+
+// --- Metrics Logic ---
+
+fn get_linux_gpu_usage() -> u32 {
+    for i in 0..3 {
+        let path = format!("/sys/class/drm/card{}/device/gpu_busy_percent", i);
+        if let Ok(content) = fs::read_to_string(path) { return content.trim().parse::<u32>().unwrap_or(0); }
+    }
+    0
+}
+
+fn get_linux_vram_best() -> Option<(u64, u64)> {
+    let mut best = (0, 0);
+    for i in 0..5 {
+        let p = format!("/sys/class/drm/card{}/device", i);
+        let t_p = format!("{}/mem_info_vram_total", p);
+        let u_p = format!("{}/mem_info_vram_used", p);
+        if let (Ok(t_s), Ok(u_s)) = (fs::read_to_string(&t_p), fs::read_to_string(&u_p)) {
+            let t = t_s.trim().parse::<u64>().unwrap_or(0);
+            let u = u_s.trim().parse::<u64>().unwrap_or(0);
+            if t > best.1 { best = (u, t); }
+        }
+    }
+    if best.1 > 0 { Some(best) } else { None }
+}
+
+#[tauri::command]
+fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
+    let mut sys = state.sys.lock().unwrap();
+    let now = Instant::now();
+    sys.refresh_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::nothing().with_cpu_usage()));
+    let mut components = Components::new();
+    components.refresh(true);
+    let cpu_temp = components.iter().filter(|c| { let l = c.label().to_lowercase(); l.contains("package") || l.contains("cpu") || l.contains("tctl") }).filter_map(|c| c.temperature()).max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0.0);
+    let mut networks = Networks::new();
+    networks.refresh(true);
+    let (mut tn_in, mut tn_out) = (0, 0);
+    for (_n, net) in networks.iter() { tn_in += net.total_received(); tn_out += net.total_transmitted(); }
+    let (net_in, net_out) = {
+        let mut last = state.last_net_io.lock().unwrap();
+        let el = now.duration_since(last.2).as_secs_f32();
+        let res = if el > 0.0 { ((tn_in.saturating_sub(last.0) as f32 / el) as u64, (tn_out.saturating_sub(last.1) as f32 / el) as u64) } else { (0,0) };
+        *last = (tn_in, tn_out, now); res
+    };
+    let (td_r, td_w) = {
+        if let Ok(content) = fs::read_to_string("/proc/diskstats") {
+            let (mut tr, mut tw) = (0, 0);
+            for line in content.lines() {
+                let p: Vec<&str> = line.split_whitespace().collect();
+                if p.len() > 13 {
+                    let dev = p[2];
+                    if dev.starts_with("sd") || dev.starts_with("nvme") {
+                        tr += p[5].parse::<u64>().unwrap_or(0) * 512;
+                        tw += p[9].parse::<u64>().unwrap_or(0) * 512;
+                    }
+                }
+            }
+            (tr, tw)
+        } else { (0, 0) }
+    };
+    let (disk_read, disk_write) = {
+        let mut last = state.last_disk_io.lock().unwrap();
+        let el = now.duration_since(last.2).as_secs_f32();
+        let res = if el > 0.0 { ((td_r.saturating_sub(last.0) as f32 / el) as u64, (td_w.saturating_sub(last.1) as f32 / el) as u64) } else { (0,0) };
+        *last = (td_r, td_w, now); res
+    };
+    let mut gpu = None;
+    if let Some(nvml) = &state.nvml {
+        if let Ok(d) = nvml.device_by_index(0) {
+            let m = d.memory_info().ok();
+            let t = d.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu).ok();
+            let ut = d.utilization_rates().ok().map(|u| u.gpu).unwrap_or(0);
+            gpu = Some(GpuStats { usage: ut, vram_used: m.as_ref().map(|m| m.used).unwrap_or(0), vram_total: m.as_ref().map(|m| m.total).unwrap_or(0), vram_percentage: m.as_ref().map(|m| (m.used as f32 / m.total as f32) * 100.0).unwrap_or(0.0), temp: t.map(|t| t as f32).unwrap_or(0.0) });
+        }
+    }
+    if gpu.is_none() || gpu.as_ref().map_or(0, |g| g.usage) == 0 {
+        if let Some((u, t)) = get_linux_vram_best() {
+            let gpu_temp = components.iter().filter(|c| c.label().to_lowercase().contains("gpu") || c.label().to_lowercase().contains("amdgpu")).filter_map(|c| c.temperature()).max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0.0);
+            let mut usage = get_linux_gpu_usage();
+            if usage == 0 { usage = gpu.as_ref().map_or(0, |g| g.usage); }
+            gpu = Some(GpuStats { usage, vram_used: u, vram_total: t, vram_percentage: (u as f32 / t as f32) * 100.0, temp: gpu_temp });
+        }
+    }
+    let uptime = { let ts = System::uptime(); format!("{:02}:{:02}:{:02}", ts / 3600, (ts % 3600) / 60, ts % 60) };
+    SystemStats { cpu_usage: sys.global_cpu_usage(), cpu_temp, cpu_freq: sys.cpus().first().map(|c| c.frequency()).unwrap_or(0), ram_used: sys.used_memory(), ram_total: sys.total_memory(), ram_percentage: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0, uptime, net_in, net_out, disk_read, disk_write, gpu }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let nvml = Nvml::init().ok();
+    tauri::Builder::default()
+        .manage(AppState {
+            sys: Mutex::new(System::new_all()),
+            nvml,
+            last_net_io: Mutex::new((0, 0, Instant::now())),
+            last_disk_io: Mutex::new((0, 0, Instant::now())),
+            active_modules: Mutex::new(HashMap::new()),
+            persistent: Mutex::new(PersistentState::load()),
+        })
+        .register_uri_scheme_protocol("flux-module", |_app, request| {
+            let uri = request.uri().to_string();
+            let path_part = uri.strip_prefix("flux-module://").unwrap_or("");
+            let modules_path = PathBuf::from("/home/jack/bridgegap/flux/modules");
+            let file_path = modules_path.join(path_part);
+            if let Ok(content) = fs::read(&file_path) {
+                let ext = file_path.extension().map_or("", |e| e.to_str().unwrap_or(""));
+                let mime = match ext {
+                    "html" => "text/html",
+                    "js" => "application/javascript",
+                    "css" => "text/css",
+                    "svg" => "image/svg+xml",
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "json" => "application/json",
+                    _ => "application/octet-stream",
+                };
+                tauri::http::Response::builder().header("Content-Type", mime).body(content).unwrap()
+            } else {
+                tauri::http::Response::builder().status(404).body(Vec::new()).unwrap()
+            }
+        })
+        .setup(|app| {
+            // Track and restore main window
+            if let Some(main_win) = app.get_webview_window("main") {
+                let app_state = app.state::<AppState>();
+                let p = app_state.persistent.lock().unwrap();
+                if let Some(b) = p.windows.get("main") {
+                    let _ = main_win.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
+                    let _ = main_win.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+                }
+                track_window(main_win);
+            }
+
+            let quit_i = MenuItem::with_id(app, "quit", "Quit Flux", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show Command Center", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => { std::process::exit(0); }
+                    "show" => { if let Some(win) = app.get_webview_window("main") { let _ = win.show(); let _ = win.set_focus(); } }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") { let _ = win.show(); let _ = win.set_focus(); }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![get_system_stats, drag_window, list_modules, toggle_module, open_module_settings, close_window])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
