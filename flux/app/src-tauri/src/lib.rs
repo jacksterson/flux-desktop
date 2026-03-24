@@ -114,7 +114,7 @@ pub struct GpuStats { usage: u32, vram_used: u64, vram_total: u64, vram_percenta
 #[derive(Serialize)]
 pub struct SystemStats {
     cpu_usage: f32, cpu_temp: f32, cpu_freq: u64, ram_used: u64, ram_total: u64, ram_percentage: f32,
-    uptime: String, net_in: u64, net_out: u64, disk_read: u64, disk_write: u64, gpu: Option<GpuStats>,
+    uptime: String, net_in: u64, net_out: u64, disk_read: Option<u64>, disk_write: Option<u64>, gpu: Option<GpuStats>,
 }
 
 // --- Commands ---
@@ -335,28 +335,42 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
         let res = if el > 0.0 { ((tn_in.saturating_sub(last.0) as f32 / el) as u64, (tn_out.saturating_sub(last.1) as f32 / el) as u64) } else { (0,0) };
         *last = (tn_in, tn_out, now); res
     };
-    let (td_r, td_w) = {
-        if let Ok(content) = fs::read_to_string("/proc/diskstats") {
-            let (mut tr, mut tw) = (0, 0);
-            for line in content.lines() {
-                let p: Vec<&str> = line.split_whitespace().collect();
-                if p.len() > 13 {
-                    let dev = p[2];
-                    if dev.starts_with("sd") || dev.starts_with("nvme") {
-                        tr += p[5].parse::<u64>().unwrap_or(0) * 512;
-                        tw += p[9].parse::<u64>().unwrap_or(0) * 512;
+    #[cfg(target_os = "linux")]
+    let (disk_read, disk_write) = {
+        let (td_r, td_w) = {
+            if let Ok(content) = fs::read_to_string("/proc/diskstats") {
+                let (mut tr, mut tw) = (0u64, 0u64);
+                for line in content.lines() {
+                    let p: Vec<&str> = line.split_whitespace().collect();
+                    if p.len() > 13 {
+                        let dev = p[2];
+                        if dev.starts_with("sd") || dev.starts_with("nvme") {
+                            tr += p[5].parse::<u64>().unwrap_or(0) * 512;
+                            tw += p[9].parse::<u64>().unwrap_or(0) * 512;
+                        }
                     }
                 }
+                (tr, tw)
+            } else {
+                (0, 0)
             }
-            (tr, tw)
-        } else { (0, 0) }
-    };
-    let (disk_read, disk_write) = {
+        };
         let mut last = state.last_disk_io.lock().unwrap();
         let el = now.duration_since(last.2).as_secs_f32();
-        let res = if el > 0.0 { ((td_r.saturating_sub(last.0) as f32 / el) as u64, (td_w.saturating_sub(last.1) as f32 / el) as u64) } else { (0,0) };
-        *last = (td_r, td_w, now); res
+        let res = if el > 0.0 {
+            (
+                Some((td_r.saturating_sub(last.0) as f32 / el) as u64),
+                Some((td_w.saturating_sub(last.1) as f32 / el) as u64),
+            )
+        } else {
+            (Some(0), Some(0))
+        };
+        *last = (td_r, td_w, now);
+        res
     };
+
+    #[cfg(not(target_os = "linux"))]
+    let (disk_read, disk_write) = (None::<u64>, None::<u64>);
     let mut gpu = None;
     if let Some(nvml) = &state.nvml {
         if let Ok(d) = nvml.device_by_index(0) {
@@ -611,5 +625,20 @@ mod tests {
         }"#;
         let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn system_stats_disk_fields_are_optional() {
+        let stats = SystemStats {
+            cpu_usage: 0.0, cpu_temp: 0.0, cpu_freq: 0,
+            ram_used: 0, ram_total: 1, ram_percentage: 0.0,
+            uptime: String::new(),
+            net_in: 0, net_out: 0,
+            disk_read: None,
+            disk_write: None,
+            gpu: None,
+        };
+        assert!(stats.disk_read.is_none());
+        assert!(stats.disk_write.is_none());
     }
 }

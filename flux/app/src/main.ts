@@ -13,7 +13,7 @@ interface Theme {
 
 interface SkinManifest { name: string; theme: Theme; modules: any[]; }
 interface GpuStats { usage: number; vram_used: number; vram_total: number; vram_percentage: number; temp: number; }
-interface SystemStats { cpu_usage: number; cpu_temp: number; cpu_freq: number; ram_used: number; ram_total: number; ram_percentage: number; uptime: string; net_in: number; net_out: number; disk_read: number; disk_write: number; gpu?: GpuStats; }
+interface SystemStats { cpu_usage: number; cpu_temp: number; cpu_freq: number; ram_used: number; ram_total: number; ram_percentage: number; uptime: string; net_in: number; net_out: number; disk_read: number | null; disk_write: number | null; gpu?: GpuStats; }
 
 const toGiB = (b: number) => (b / (1024 ** 3)).toFixed(1);
 const toGHz = (m: number) => (m / 1000).toFixed(1);
@@ -137,10 +137,17 @@ class SystemStatsModule {
     // IO
     document.getElementById("net-in")!.textContent = `IN: ${fmtBS(stats.net_in)}`;
     document.getElementById("net-out")!.textContent = `OUT: ${fmtBS(stats.net_out)}`;
-    document.getElementById("disk-read")!.textContent = `READ: ${fmtBS(stats.disk_read)}`;
-    document.getElementById("disk-write")!.textContent = `WRITE: ${fmtBS(stats.disk_write)}`;
     this.netGraph.update(stats.net_in + stats.net_out, 1024*1024*2, theme.primary);
-    this.diskGraph.update(stats.disk_read + stats.disk_write, 1024*1024*10, theme.primary);
+
+    const diskSection = document.getElementById("disk-section");
+    if (stats.disk_read !== null && stats.disk_read !== undefined) {
+      document.getElementById("disk-read")!.textContent = `READ: ${fmtBS(stats.disk_read)}`;
+      document.getElementById("disk-write")!.textContent = `WRITE: ${fmtBS(stats.disk_write ?? 0)}`;
+      this.diskGraph.update((stats.disk_read ?? 0) + (stats.disk_write ?? 0), 1024 * 1024 * 10, theme.primary);
+      if (diskSection) diskSection.style.display = "";
+    } else {
+      if (diskSection) diskSection.style.display = "none";
+    }
   }
 }
 
