@@ -70,6 +70,7 @@ impl PersistentState {
                 if state.version == STATE_VERSION {
                     return state;
                 }
+                eprintln!("Info: window_state.json version {} does not match expected {}, starting fresh", state.version, STATE_VERSION);
                 // Version mismatch: discard and start fresh
             }
         }
@@ -166,8 +167,10 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                 let win_config = &manifest.window;
                 let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/{}", id, manifest.entry).parse().unwrap());
                 
-                let p = state.persistent.lock().unwrap();
-                let saved = p.windows.get(&id);
+                let saved = {
+                    let p = state.persistent.lock().unwrap();
+                    p.windows.get(&id).cloned()
+                };
 
                 let mut builder = WebviewWindowBuilder::new(&app, &id, url)
                     .title(&manifest.name)
@@ -178,7 +181,7 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                     .skip_taskbar(true)
                     .shadow(false);
 
-                if let Some(b) = saved {
+                if let Some(b) = &saved {
                     builder = builder
                         .position(b.x, b.y)
                         .inner_size(b.width, b.height);
@@ -187,9 +190,9 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                 }
 
                 let window = builder.build().map_err(|e| e.to_string())?;
-                
+
                 // Force physical restore if saved
-                if let Some(b) = saved {
+                if let Some(b) = &saved {
                     let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
                     let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
                 }
@@ -211,8 +214,10 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
     } else {
         let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/settings.html", id).parse().unwrap());
         let app_state = app.state::<AppState>();
-        let p = app_state.persistent.lock().unwrap();
-        let saved = p.windows.get(&settings_id);
+        let saved = {
+            let p = app_state.persistent.lock().unwrap();
+            p.windows.get(&settings_id).cloned()
+        };
 
         let mut builder = WebviewWindowBuilder::new(&app, &settings_id, url)
             .title(format!("Configure // {}", id))
@@ -223,7 +228,7 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
             .skip_taskbar(true)
             .shadow(false);
 
-        if let Some(b) = saved {
+        if let Some(b) = &saved {
             builder = builder
                 .position(b.x, b.y)
                 .inner_size(b.width, b.height);
@@ -232,9 +237,9 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
         }
 
         let window = builder.build().map_err(|e| e.to_string())?;
-        
+
         // Force physical restore if saved
-        if let Some(b) = saved {
+        if let Some(b) = &saved {
             let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
             let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
         }
@@ -340,7 +345,6 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let nvml = Nvml::init().ok();
     tauri::Builder::default()
         .register_uri_scheme_protocol("flux-module", |_app, request| {
             let uri = request.uri().to_string();
@@ -365,9 +369,14 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            let nvml = Nvml::init().ok();
+
             // Resolve data directory
             let data_dir = app.path().app_data_dir()
-                .unwrap_or_else(|_| PathBuf::from("."));
+                .unwrap_or_else(|e| {
+                    eprintln!("Warning: could not resolve app data dir ({}), using current directory", e);
+                    PathBuf::from(".")
+                });
 
             // Create ~/Flux/modules and ~/Flux/skins if needed
             if let Err(e) = ensure_flux_dirs() {
@@ -401,8 +410,7 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Quit Flux", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show Command Center", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
-            TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => std::process::exit(0),
@@ -421,8 +429,11 @@ pub fn run() {
                             let _ = win.set_focus();
                         }
                     }
-                })
-                .build(app)?;
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            tray_builder.build(app)?;
 
             Ok(())
         })
