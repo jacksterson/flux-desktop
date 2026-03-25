@@ -80,6 +80,10 @@ fn apply_x11(window: &WebviewWindow) {
         _ => return,
     };
 
+    // Note: opens a fresh X client connection separate from Tauri/GTK's own connection.
+    // Most WMs (KDE, XFCE) honour _NET_WM_WINDOW_TYPE regardless of which client wrote it.
+    // Strict WMs may require the window owner to set properties before XMapWindow.
+    // If desktop-layer is ignored in testing, revisit by reusing the GDK display connection.
     let Ok((conn, _screen)) = RustConnection::connect(None) else { return; };
 
     // Intern the atoms we need
