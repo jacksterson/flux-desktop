@@ -173,6 +173,16 @@ fn track_window(window: WebviewWindow) {
     window.on_window_event(move |event| {
         if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
             let state = app_handle.state::<AppState>();
+
+            // Wayland layer-shell surfaces always report outer_position() as (0,0).
+            // Skip Moved events for these windows — their position is managed via margins.
+            if matches!(event, WindowEvent::Moved(_)) {
+                let dw = state.desktop_wayland_windows.lock().unwrap();
+                if dw.contains(&label) {
+                    return;
+                }
+            }
+
             if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
                 let mut p = state.persistent.lock().unwrap();
                 p.windows.insert(label.clone(), WindowBounds {
@@ -313,10 +323,56 @@ fn close_window(window: Window) {
 }
 
 #[tauri::command]
-fn drag_window(window: Window) { let _ = window.start_dragging(); }
+fn drag_window(window: Window, state: State<'_, AppState>) {
+    // On Wayland, layer-shell windows cannot use xdg_toplevel.move().
+    // Widget JS handles drag via move_module instead.
+    let dw = state.desktop_wayland_windows.lock().unwrap();
+    if dw.contains(window.label()) {
+        return;
+    }
+    let _ = window.start_dragging();
+}
 
 fn compute_new_margins(current: (i32, i32), dx: i32, dy: i32) -> (i32, i32) {
     (current.0 + dx, current.1 + dy)
+}
+
+#[tauri::command]
+async fn move_module(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    dx: i32,
+    dy: i32,
+) -> Result<(), String> {
+    // Only applies to Wayland desktop-layer windows
+    {
+        let dw = state.desktop_wayland_windows.lock().unwrap();
+        if !dw.contains(&id) {
+            return Ok(());
+        }
+    }
+
+    let Some(window) = app.get_webview_window(&id) else {
+        return Ok(());
+    };
+
+    let (new_left, new_top) = {
+        let p = state.persistent.lock().unwrap();
+        let current = p.margins.get(&id).map(|m| (m.left, m.top)).unwrap_or((0, 0));
+        compute_new_margins(current, dx, dy)
+    };
+
+    desktop_layer::set_margins(&window, new_left, new_top);
+
+    {
+        let mut p = state.persistent.lock().unwrap();
+        p.margins.insert(id.clone(), MarginPosition { left: new_left, top: new_top });
+        let state_path = state.data_dir.join("window_state.json");
+        p.save(&state_path);
+    }
+
+    Ok(())
 }
 
 // --- Metrics Logic ---
@@ -549,7 +605,10 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_system_stats, drag_window, list_modules, toggle_module, open_module_settings, close_window])
+        .invoke_handler(tauri::generate_handler![
+            get_system_stats, drag_window, list_modules, toggle_module,
+            open_module_settings, close_window, move_module
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
