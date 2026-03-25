@@ -46,14 +46,15 @@ Non-Linux targets compile to an empty stub.
 
 ```rust
 fn apply_wayland(window: &WebviewWindow) {
-    use tauri::WindowExtLinux;
     use gtk_layer_shell::{Layer, Edge};
 
-    let gtk_win = window.gtk_window();
+    // gtk_window() returns Result in Tauri 2 — bail silently on error
+    let Ok(gtk_win) = window.gtk_window() else { return; };
     if !gtk_layer_shell::is_supported(&gtk_win) { return; }
 
     gtk_layer_shell::init_for_window(&gtk_win);
-    gtk_layer_shell::set_layer(&gtk_win, Layer::Background);
+    gtk_layer_shell::set_layer(&gtk_win, Layer::Bottom);
+    // 0.6 API: set_keyboard_mode with KeyboardMode enum
     gtk_layer_shell::set_keyboard_mode(&gtk_win, gtk_layer_shell::KeyboardMode::None);
 
     // Anchor top+left; margins are the widget's (x, y) position
@@ -66,7 +67,7 @@ fn apply_wayland(window: &WebviewWindow) {
 }
 ```
 
-**Layer:** `Background` — above wallpaper, below desktop icons layer, below all app windows.
+**Layer:** `Bottom` — above wallpaper, visible alongside desktop icons, below all app windows. (`Background` sits behind desktop icons on KDE Plasma; `Bottom` is the correct layer for widgets.)
 **Exclusive zone:** `-1` — does not push panels or taskbars.
 
 ### Drag on Wayland
@@ -76,9 +77,11 @@ Tauri's `drag_window` command calls `xdg_toplevel.move()`, which does not exist 
 - Widget JS tracks `mousedown` → `mousemove` delta while button is held
 - Streams `move_module` invocations to Rust
 - Rust accumulates delta, updates `Edge::Left` and `Edge::Top` margins via `gtk_layer_shell::set_margin`
-- On `mouseup`, final position is written to persistent state (existing save mechanism)
+- On `mouseup`, final margin values `(left, top)` are written to persistent state under a separate key from the normal position store (Wayland surfaces always report `outer_position()` as `(0, 0)`, so the existing `track_window` position-save mechanism must be bypassed for desktop-layer Wayland windows to avoid overwriting the correct margins with zeros on every move event)
 
 `drag_window` continues to work on non-desktop-layer windows and on X11 — no existing widgets break.
+
+`track_window` gains a guard: if the window is a desktop-layer window on Wayland, `WindowEvent::Moved` is ignored (position is managed via margins, not pixel coordinates).
 
 ### Resize on Wayland
 
@@ -113,8 +116,8 @@ Will use `NSWindowLevel` set to `kCGDesktopIconWindowLevel` via `objc2` bindings
 
 ```toml
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk-layer-shell = "0.5"
-x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
+gtk-layer-shell = "0.6"   # 0.6+ required for KeyboardMode enum API
+x11rb = "0.13"            # pure-Rust RustConnection; no allow-unsafe-code needed
 ```
 
 ---
@@ -124,6 +127,8 @@ x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 - After `track_window(window)`: call `desktop_layer::apply(&window, &win_config.window_level)`
 - Add new command `move_module(id, dx, dy)` registered in `tauri::Builder`
 - `drag_window` command gains a guard: if the target window is desktop-layer on Wayland, return early (widget JS handles drag itself)
+- `track_window` gains a guard: skip `WindowEvent::Moved` for desktop-layer Wayland windows (they always report `outer_position()` as `(0, 0)`; saving that value would corrupt the margin-based position on restart)
+- Persistent state gains a separate `margins` map for desktop-layer Wayland window positions (`{id: {left, top}}`) alongside the existing `windows` position/size map
 
 ---
 
@@ -141,7 +146,7 @@ Add a note to the `drag_window` API entry:
 |---|---|
 | Wayland + compositor supports layer shell | Desktop layer applied |
 | Wayland + compositor does not support layer shell (e.g. GNOME) | Silent fallback to normal window |
-| `libgtk-layer-shell` not installed | `is_supported()` returns false → silent fallback |
+| `libgtk-layer-shell` not installed | Dynamic linker error at process start — `libgtk-layer-shell` is a required system dependency on Wayland; users must install it (`libgtk-layer-shell` / `gtk-layer-shell` package) |
 | X11 + EWMH-compliant WM | Desktop layer applied |
 | X11 + WM treats type as fixed-position | Testing may require dropping type hint |
 | Non-Linux platform | Empty stub, normal window |
