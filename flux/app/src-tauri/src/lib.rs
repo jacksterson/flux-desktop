@@ -59,6 +59,12 @@ pub struct WindowBounds {
     pub height: f64,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct MarginPosition {
+    pub left: i32,
+    pub top: i32,
+}
+
 const STATE_VERSION: u32 = 1;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -66,11 +72,13 @@ pub struct PersistentState {
     #[serde(default)]
     pub version: u32,
     pub windows: HashMap<String, WindowBounds>,
+    #[serde(default)]
+    pub margins: HashMap<String, MarginPosition>,
 }
 
 impl Default for PersistentState {
     fn default() -> Self {
-        Self { version: STATE_VERSION, windows: HashMap::new() }
+        Self { version: STATE_VERSION, windows: HashMap::new(), margins: HashMap::new() }
     }
 }
 
@@ -236,7 +244,10 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                     let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
                 }
                 
-                let saved_margins: Option<(i32, i32)> = None; // TODO Task 3: restore from p.margins
+                let saved_margins = {
+                    let p = state.persistent.lock().unwrap();
+                    p.margins.get(&id).map(|m| (m.left, m.top))
+                };
 
                 // apply() borrows &window, so it must come before track_window()
                 // which takes ownership. No clone needed this way.
@@ -303,6 +314,10 @@ fn close_window(window: Window) {
 
 #[tauri::command]
 fn drag_window(window: Window) { let _ = window.start_dragging(); }
+
+fn compute_new_margins(current: (i32, i32), dx: i32, dy: i32) -> (i32, i32) {
+    (current.0 + dx, current.1 + dy)
+}
 
 // --- Metrics Logic ---
 
@@ -640,6 +655,37 @@ mod tests {
         }"#;
         let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn persistent_state_margins_roundtrip() {
+        let path = temp_dir().join("flux_test_margins.json");
+        let mut state = PersistentState::default();
+        state.margins.insert(
+            "my-widget".to_string(),
+            MarginPosition { left: 120, top: 80 },
+        );
+        state.save(&path);
+        let loaded = PersistentState::load(&path);
+        assert_eq!(loaded.margins["my-widget"].left, 120);
+        assert_eq!(loaded.margins["my-widget"].top, 80);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn persistent_state_margins_default_empty() {
+        let state = PersistentState::default();
+        assert!(state.margins.is_empty());
+    }
+
+    #[test]
+    fn compute_new_margins_adds_delta() {
+        assert_eq!(compute_new_margins((100, 50), 10, -5), (110, 45));
+    }
+
+    #[test]
+    fn compute_new_margins_allows_negative() {
+        assert_eq!(compute_new_margins((5, 5), -10, -10), (-5, -5));
     }
 
     #[test]
