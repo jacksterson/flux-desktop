@@ -326,15 +326,17 @@ fn close_window(window: Window) {
 fn drag_window(window: Window, state: State<'_, AppState>) {
     // On Wayland, layer-shell windows cannot use xdg_toplevel.move().
     // Widget JS handles drag via move_module instead.
-    let dw = state.desktop_wayland_windows.lock().unwrap();
-    if dw.contains(window.label()) {
-        return;
+    let is_layer_shell = {
+        let dw = state.desktop_wayland_windows.lock().unwrap();
+        dw.contains(window.label())
+    };
+    if !is_layer_shell {
+        let _ = window.start_dragging();
     }
-    let _ = window.start_dragging();
 }
 
 fn compute_new_margins(current: (i32, i32), dx: i32, dy: i32) -> (i32, i32) {
-    (current.0 + dx, current.1 + dy)
+    (current.0.saturating_add(dx), current.1.saturating_add(dy))
 }
 
 #[tauri::command]
@@ -354,7 +356,7 @@ async fn move_module(
     }
 
     let Some(window) = app.get_webview_window(&id) else {
-        return Ok(());
+        return Err(format!("move_module: window '{id}' is in desktop_wayland_windows but not found in app — state mismatch"));
     };
 
     let (new_left, new_top) = {
