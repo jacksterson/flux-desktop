@@ -40,8 +40,28 @@ fn apply_linux(window: &WebviewWindow, initial_margins: Option<(i32, i32)>) -> b
 
 // Wayland implementation — filled in Task 5
 #[cfg(target_os = "linux")]
-fn apply_wayland(_window: &WebviewWindow, _initial_margins: Option<(i32, i32)>) -> bool {
-    false  // stub — replaced in Task 5
+fn apply_wayland(window: &WebviewWindow, initial_margins: Option<(i32, i32)>) -> bool {
+    use gtk_layer_shell::{Layer, Edge, KeyboardMode, LayerShell};
+
+    let Ok(gtk_win) = window.gtk_window() else { return false; };
+    if !gtk_layer_shell::is_supported() {
+        return false;
+    }
+
+    gtk_win.init_layer_shell();
+    gtk_win.set_layer(Layer::Bottom);
+    gtk_win.set_keyboard_mode(KeyboardMode::None);
+    gtk_win.set_exclusive_zone(-1);
+
+    // Anchor top-left; margins define the widget's (x, y) position on screen
+    gtk_win.set_anchor(Edge::Left, true);
+    gtk_win.set_anchor(Edge::Top, true);
+
+    let (left, top) = initial_margins.unwrap_or((0, 0));
+    gtk_win.set_layer_shell_margin(Edge::Left, left);
+    gtk_win.set_layer_shell_margin(Edge::Top, top);
+
+    true
 }
 
 // X11 implementation — filled in Task 6
@@ -51,6 +71,15 @@ fn apply_x11(_window: &WebviewWindow) {
 }
 
 #[cfg(target_os = "linux")]
-fn set_margins_linux(_window: &WebviewWindow, _left: i32, _top: i32) {
-    // stub — replaced in Task 5
+fn set_margins_linux(window: &WebviewWindow, left: i32, top: i32) {
+    if std::env::var("WAYLAND_DISPLAY").is_err() {
+        return;
+    }
+    use gtk_layer_shell::{Edge, LayerShell};
+    let Ok(gtk_win) = window.gtk_window() else { return; };
+    if !gtk_layer_shell::is_supported() {
+        return;
+    }
+    gtk_win.set_layer_shell_margin(Edge::Left, left);
+    gtk_win.set_layer_shell_margin(Edge::Top, top);
 }
