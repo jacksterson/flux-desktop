@@ -1,3 +1,4 @@
+mod desktop_layer;
 mod paths;
 use paths::{ensure_flux_dirs, flux_modules_dir};
 
@@ -11,7 +12,7 @@ use std::time::Instant;
 use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // --- Discovery Types ---
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
@@ -105,7 +106,10 @@ pub struct AppState {
     pub last_disk_io: Mutex<(u64, u64, Instant)>,
     pub active_modules: Mutex<HashMap<String, ModuleManifest>>,
     pub persistent: Mutex<PersistentState>,
-    pub data_dir: PathBuf,   // OS app data dir — for window_state.json
+    pub data_dir: PathBuf,
+    /// IDs of windows that have Wayland layer shell applied.
+    /// Used to guard track_window and drag_window.
+    pub desktop_wayland_windows: Mutex<HashSet<String>>,
 }
 
 #[derive(Serialize)]
@@ -181,6 +185,7 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
     if let Some(_existing) = active_map.remove(&id) {
         if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
         if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
+        state.desktop_wayland_windows.lock().unwrap().remove(&id);
     } else {
         let user_manifest = flux_modules_dir().join(&id).join("module.json");
         let bundled_manifest = app.path().resource_dir()
@@ -230,6 +235,14 @@ async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -
                     let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
                 }
                 
+                let saved_margins: Option<(i32, i32)> = None; // TODO Task 3: restore from p.margins
+
+                // apply() borrows &window, so it must come before track_window()
+                // which takes ownership. No clone needed this way.
+                let is_wayland_desktop = desktop_layer::apply(&window, &win_config.window_level, saved_margins);
+                if is_wayland_desktop {
+                    state.desktop_wayland_windows.lock().unwrap().insert(id.clone());
+                }
                 track_window(window);
                 active_map.insert(id.clone(), manifest.clone());
             }
@@ -485,6 +498,7 @@ pub fn run() {
                 active_modules: Mutex::new(HashMap::new()),
                 persistent: Mutex::new(persistent),
                 data_dir,
+                desktop_wayland_windows: Mutex::new(HashSet::new()),
             });
 
             // System tray
