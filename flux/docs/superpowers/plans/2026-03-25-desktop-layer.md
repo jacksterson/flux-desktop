@@ -32,7 +32,7 @@ Open `app/src-tauri/Cargo.toml`. After the existing `[dependencies]` block, add:
 
 ```toml
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk-layer-shell = "0.6"   # 0.6+ required for KeyboardMode enum API
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }   # features = ["v0_6"] required for KeyboardMode API
 x11rb = "0.13"            # pure-Rust RustConnection; no system dep beyond X11 socket
 ```
 
