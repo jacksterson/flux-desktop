@@ -96,6 +96,8 @@ Initiates a native window drag. Call on `mousedown` of your drag handle.
 __TAURI__.core.invoke("drag_window");
 ```
 
+> **Desktop layer note (Wayland):** `drag_window` does not work on `windowLevel: "desktop"` windows on Wayland — the compositor does not expose `xdg_toplevel.move()` for layer-shell surfaces. Use `mousedown`/`pointermove` event tracking + `move_module(id, dx, dy)` for drag handles in desktop-layer widgets.
+
 ### `list_modules`
 Returns all available module manifests (both active and inactive).
 
@@ -126,6 +128,16 @@ Shows or hides a module window by id.
 ```javascript
 __TAURI__.core.invoke("toggle_module", { id: "my-widget" });
 ```
+
+### `move_module`
+Moves a desktop-layer widget by a pixel delta. **Wayland only** — on X11 and other platforms this is a no-op; use `drag_window` instead.
+
+```javascript
+// Call repeatedly during pointermove while dragging
+__TAURI__.core.invoke("move_module", { id: "my-widget", dx: deltaX, dy: deltaY });
+```
+
+`dx` and `dy` are integers (pixels). The position is persisted automatically — the widget reopens at the last dragged position.
 
 ---
 
