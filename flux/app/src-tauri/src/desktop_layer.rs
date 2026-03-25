@@ -25,7 +25,7 @@ pub fn set_margins(window: &WebviewWindow, left: i32, top: i32) {
     #[cfg(target_os = "linux")]
     set_margins_linux(window, left, top);
     #[cfg(not(target_os = "linux"))]
-    let _ = (window, left, top);
+    { let _ = (window, left, top); }
 }
 
 #[cfg(target_os = "linux")]

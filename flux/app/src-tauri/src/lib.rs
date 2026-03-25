@@ -99,6 +99,7 @@ impl PersistentState {
 }
 
 // --- Engine State ---
+// Lock order (to prevent deadlock): active_modules → desktop_wayland_windows → persistent
 pub struct AppState {
     pub sys: Mutex<System>,
     pub nvml: Option<Nvml>,
