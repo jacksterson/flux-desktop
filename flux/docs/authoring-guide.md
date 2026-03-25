@@ -96,7 +96,7 @@ Initiates a native window drag. Call on `mousedown` of your drag handle.
 __TAURI__.core.invoke("drag_window");
 ```
 
-> **Desktop layer note (Wayland):** `drag_window` does not work on `windowLevel: "desktop"` windows on Wayland — the compositor does not expose `xdg_toplevel.move()` for layer-shell surfaces. Use `mousedown`/`pointermove` event tracking + `move_module(id, dx, dy)` for drag handles in desktop-layer widgets.
+> **Desktop layer note:** On Wayland, `drag_window` does not work on `windowLevel: "desktop"` windows — the compositor does not expose `xdg_toplevel.move()` for layer-shell surfaces. On Wayland, use `mousedown`/`pointermove` event tracking + `move_module` instead (see below). On X11, `drag_window` works normally.
 
 ### `list_modules`
 Returns all available module manifests (both active and inactive).
