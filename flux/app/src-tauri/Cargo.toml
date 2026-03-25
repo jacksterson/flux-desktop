@@ -29,4 +29,5 @@ dirs = "5"
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 x11rb = "0.13"
+raw-window-handle = "0.6"
 

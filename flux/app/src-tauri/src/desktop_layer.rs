@@ -64,10 +64,66 @@ fn apply_wayland(window: &WebviewWindow, initial_margins: Option<(i32, i32)>) ->
     true
 }
 
-// X11 implementation — filled in Task 6
+// X11 implementation
 #[cfg(target_os = "linux")]
-fn apply_x11(_window: &WebviewWindow) {
-    // stub — replaced in Task 6
+fn apply_x11(window: &WebviewWindow) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as XProtoExt, PropMode};
+    use x11rb::rust_connection::RustConnection;
+    use x11rb::wrapper::ConnectionExt;
+
+    // Obtain the raw X11 window ID via raw-window-handle (Tauri 2 implements HasWindowHandle).
+    let xlib_win: u32 = match window.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Xlib(h)) => h.window as u32,
+        Ok(RawWindowHandle::Xcb(h)) => h.window.get(),
+        _ => return,
+    };
+
+    let Ok((conn, _screen)) = RustConnection::connect(None) else { return; };
+
+    // Intern the atoms we need
+    let wm_type_cookie = match conn.intern_atom(false, b"_NET_WM_WINDOW_TYPE") {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let type_desktop_cookie = match conn.intern_atom(false, b"_NET_WM_WINDOW_TYPE_DESKTOP") {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let wm_state_cookie = match conn.intern_atom(false, b"_NET_WM_STATE") {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let state_below_cookie = match conn.intern_atom(false, b"_NET_WM_STATE_BELOW") {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let Ok(wm_type) = wm_type_cookie.reply() else { return; };
+    let Ok(type_desktop) = type_desktop_cookie.reply() else { return; };
+    let Ok(wm_state) = wm_state_cookie.reply() else { return; };
+    let Ok(state_below) = state_below_cookie.reply() else { return; };
+
+    // _NET_WM_WINDOW_TYPE = _NET_WM_WINDOW_TYPE_DESKTOP
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        xlib_win,
+        wm_type.atom,
+        AtomEnum::ATOM,
+        &[type_desktop.atom],
+    );
+
+    // _NET_WM_STATE = _NET_WM_STATE_BELOW
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        xlib_win,
+        wm_state.atom,
+        AtomEnum::ATOM,
+        &[state_below.atom],
+    );
+
+    let _ = conn.flush();
 }
 
 #[cfg(target_os = "linux")]
