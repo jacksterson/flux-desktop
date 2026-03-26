@@ -249,17 +249,6 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
                     builder = builder.inner_size(win_config.width, win_config.height);
                 }
 
-                // On Wayland, gtk_layer_shell::init_layer_shell() must be called before the
-                // GTK window is realized (i.e. before gtk_widget_show). Build hidden so that
-                // apply() can init layer shell while the window is still unrealized, then
-                // show() below after apply() configures the layer.
-                #[cfg(target_os = "linux")]
-                if win_config.window_level == WindowLevel::Desktop
-                    && std::env::var("WAYLAND_DISPLAY").is_ok()
-                {
-                    builder = builder.visible(false);
-                }
-
                 let window = builder.build().map_err(|e| e.to_string())?;
 
                 // Force physical restore if saved
@@ -278,14 +267,6 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
                 let is_wayland_desktop = desktop_layer::apply(&window, &win_config.window_level, saved_margins);
                 if is_wayland_desktop {
                     state.desktop_wayland_windows.lock().unwrap().insert(id.clone());
-                }
-                // Show the window now that layer shell is configured (it was built hidden
-                // on Wayland desktop layer to allow init_layer_shell before realization).
-                #[cfg(target_os = "linux")]
-                if win_config.window_level == WindowLevel::Desktop
-                    && std::env::var("WAYLAND_DISPLAY").is_ok()
-                {
-                    let _ = window.show();
                 }
                 track_window(window);
                 active_map.insert(id.clone(), manifest.clone());
