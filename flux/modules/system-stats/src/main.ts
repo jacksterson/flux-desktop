@@ -218,7 +218,7 @@ class FluxShell {
     container.addEventListener("mousedown", (e) => {
       const target = e.target as HTMLElement;
       if ((target.id === "main-container" || target.id === "spotlight") && !target.classList.contains("resizer")) {
-        invoke("drag_window");
+        appWindow.startDragging();
       }
     });
 

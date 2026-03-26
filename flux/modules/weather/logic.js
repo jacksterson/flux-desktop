@@ -268,7 +268,7 @@ window.addEventListener("mousemove", (e) => {
 container.addEventListener("mousedown", (e) => {
   const target = e.target;
   if ((target.id === "main-container" || target.id === "spotlight" || target.closest("header")) && !target.classList.contains("resizer") && target.id !== "open-settings") {
-    invoke("drag_window");
+    appWindow.startDragging();
   }
 });
 

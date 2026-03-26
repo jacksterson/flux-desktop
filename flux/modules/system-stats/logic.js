@@ -190,7 +190,7 @@ container.addEventListener("mousedown", (e) => {
   ) {
     // Only drag if it's NOT the actual settings h1 or a resizer
     if (target.id !== "open-settings" && !target.classList.contains("resizer")) {
-      invoke("drag_window");
+      appWindow.startDragging();
     }
   }
 });

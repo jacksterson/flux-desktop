@@ -115,7 +115,7 @@
     <div class="scanlines"></div>
     <div class="hud-container" id="main-container">
         <div class="pattern-layer" id="spotlight"></div>
-        <div class="resizer resizer-rb" data-direction="BottomRight"></div>
+        <div class="resizer resizer-rb" data-direction="SouthEast"></div>
 
         <div class="content">
             <header id="drag-header">
@@ -207,12 +207,12 @@
         });
 
         document.getElementById("drag-header").onmousedown = (e) => {
-            if (e.target.id !== "close-btn") invoke("drag_window");
+            if (e.target.id !== "close-btn") appWindow.startDragging();
         };
         
         document.querySelector(".resizer-rb").onmousedown = (e) => {
             e.preventDefault(); e.stopPropagation();
-            appWindow.startResizing("BottomRight");
+            appWindow.startResizing("SouthEast");
         };
 
         const closeBtn = document.getElementById("close-btn");
