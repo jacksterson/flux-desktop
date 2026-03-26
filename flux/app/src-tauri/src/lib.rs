@@ -199,7 +199,7 @@ fn track_window(window: WebviewWindow) {
 }
 
 #[tauri::command]
-async fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     let mut active_map = state.active_modules.lock().unwrap();
     if let Some(_existing) = active_map.remove(&id) {
         if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
