@@ -174,13 +174,16 @@ fn track_window(window: WebviewWindow) {
         if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
             let state = app_handle.state::<AppState>();
 
-            // Wayland layer-shell surfaces always report outer_position() as (0,0).
-            // Skip Moved events for these windows — their position is managed via margins.
             if matches!(event, WindowEvent::Moved(_)) {
-                let dw = state.desktop_wayland_windows.lock().unwrap();
-                if dw.contains(&label) {
-                    return;
-                }
+                // Layer-shell windows: position is managed via margins, not pixel coords.
+                let is_layer_shell = state.desktop_wayland_windows.lock().unwrap().contains(&label);
+                if is_layer_shell { return; }
+
+                // Non-layer-shell windows on Wayland: outer_position() returns (0,0)
+                // because xdg_toplevel position is compositor-managed. Saving (0,0) would
+                // corrupt stored positions; skip Moved events on Wayland entirely.
+                #[cfg(target_os = "linux")]
+                if std::env::var("WAYLAND_DISPLAY").is_ok() { return; }
             }
 
             if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
@@ -246,6 +249,17 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
                     builder = builder.inner_size(win_config.width, win_config.height);
                 }
 
+                // On Wayland, gtk_layer_shell::init_layer_shell() must be called before the
+                // GTK window is realized (i.e. before gtk_widget_show). Build hidden so that
+                // apply() can init layer shell while the window is still unrealized, then
+                // show() below after apply() configures the layer.
+                #[cfg(target_os = "linux")]
+                if win_config.window_level == WindowLevel::Desktop
+                    && std::env::var("WAYLAND_DISPLAY").is_ok()
+                {
+                    builder = builder.visible(false);
+                }
+
                 let window = builder.build().map_err(|e| e.to_string())?;
 
                 // Force physical restore if saved
@@ -264,6 +278,14 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
                 let is_wayland_desktop = desktop_layer::apply(&window, &win_config.window_level, saved_margins);
                 if is_wayland_desktop {
                     state.desktop_wayland_windows.lock().unwrap().insert(id.clone());
+                }
+                // Show the window now that layer shell is configured (it was built hidden
+                // on Wayland desktop layer to allow init_layer_shell before realization).
+                #[cfg(target_os = "linux")]
+                if win_config.window_level == WindowLevel::Desktop
+                    && std::env::var("WAYLAND_DISPLAY").is_ok()
+                {
+                    let _ = window.show();
                 }
                 track_window(window);
                 active_map.insert(id.clone(), manifest.clone());
@@ -579,9 +601,19 @@ pub fn run() {
 
             // Restore main window position
             if let Some(main_win) = app.get_webview_window("main") {
-                if let Some(b) = persistent.windows.get("main") {
-                    let _ = main_win.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
-                    let _ = main_win.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+                // On Wayland, xdg_toplevel position is compositor-managed and set_position
+                // is queued/deferred. Restoring here causes the window to jump later (when
+                // the event loop drains the queue), which also triggers spurious moves on
+                // other windows. Only restore on X11 where set_position is synchronous.
+                #[cfg(target_os = "linux")]
+                let should_restore = std::env::var("WAYLAND_DISPLAY").is_err();
+                #[cfg(not(target_os = "linux"))]
+                let should_restore = true;
+                if should_restore {
+                    if let Some(b) = persistent.windows.get("main") {
+                        let _ = main_win.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
+                        let _ = main_win.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+                    }
                 }
                 track_window(main_win);
             }
