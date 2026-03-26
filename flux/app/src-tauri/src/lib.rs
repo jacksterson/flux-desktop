@@ -178,12 +178,6 @@ fn track_window(window: WebviewWindow) {
                 // Layer-shell windows: position is managed via margins, not pixel coords.
                 let is_layer_shell = state.desktop_wayland_windows.lock().unwrap().contains(&label);
                 if is_layer_shell { return; }
-
-                // Non-layer-shell windows on Wayland: outer_position() returns (0,0)
-                // because xdg_toplevel position is compositor-managed. Saving (0,0) would
-                // corrupt stored positions; skip Moved events on Wayland entirely.
-                #[cfg(target_os = "linux")]
-                if std::env::var("WAYLAND_DISPLAY").is_ok() { return; }
             }
 
             if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
