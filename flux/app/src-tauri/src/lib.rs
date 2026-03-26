@@ -1,6 +1,6 @@
 mod desktop_layer;
 mod paths;
-use paths::{ensure_flux_dirs, flux_modules_dir};
+use paths::{ensure_flux_dirs, flux_modules_dir, flux_user_dir};
 
 use sysinfo::{System, Components, Networks, CpuRefreshKind, RefreshKind};
 use std::sync::Mutex;
@@ -484,8 +484,26 @@ fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
     SystemStats { cpu_usage: sys.global_cpu_usage(), cpu_temp, cpu_freq: sys.cpus().first().map(|c| c.frequency()).unwrap_or(0), ram_used: sys.used_memory(), ram_total: sys.total_memory(), ram_percentage: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0, uptime, net_in, net_out, disk_read, disk_write, gpu }
 }
 
+fn setup_panic_log() {
+    let log_path = flux_user_dir().join("crash.log");
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info); // still prints to terminal
+        let bt = std::backtrace::Backtrace::force_capture();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let entry = format!("=== CRASH at unix:{ts} ===\n{info}\n{bt}\n\n");
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            let _ = std::io::Write::write_all(&mut f, entry.as_bytes());
+        }
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    setup_panic_log();
     tauri::Builder::default()
         .register_uri_scheme_protocol("flux-module", |ctx, request| {
             let uri = request.uri().to_string();
