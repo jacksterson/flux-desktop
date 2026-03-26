@@ -199,7 +199,7 @@ document.querySelectorAll(".resizer").forEach(r => {
   r.onmousedown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const dir = r.dataset.direction;
-    if (dir) appWindow.startResizing(dir);
+    if (dir) appWindow.startResizeDragging(dir);
   };
 });
 

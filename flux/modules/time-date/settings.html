@@ -212,7 +212,7 @@
         
         document.querySelector(".resizer-rb").onmousedown = (e) => {
             e.preventDefault(); e.stopPropagation();
-            appWindow.startResizing("SouthEast");
+            appWindow.startResizeDragging("SouthEast");
         };
 
         const closeBtn = document.getElementById("close-btn");

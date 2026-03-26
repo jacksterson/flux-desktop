@@ -227,7 +227,7 @@ class FluxShell {
         e.preventDefault(); e.stopPropagation();
         const dir = (r as HTMLElement).dataset.direction;
         // @ts-ignore
-        if (dir) appWindow.startResizing(dir);
+        if (dir) appWindow.startResizeDragging(dir);
       };
     });
 
