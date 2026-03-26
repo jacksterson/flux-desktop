@@ -365,7 +365,11 @@ async fn move_module(
         compute_new_margins(current, dx, dy)
     };
 
-    desktop_layer::set_margins(&window, new_left, new_top);
+    // gtk-layer-shell requires the GTK main thread; dispatch via run_on_main_thread.
+    // Fire-and-forget: disk write below can proceed immediately since it's independent.
+    app.run_on_main_thread(move || {
+        desktop_layer::set_margins(&window, new_left, new_top);
+    }).map_err(|e| e.to_string())?;
 
     {
         let mut p = state.persistent.lock().unwrap();
