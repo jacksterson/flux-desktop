@@ -16,6 +16,9 @@ flux/window_state.json
 .DS_Store
 Thumbs.db
 
+# Git worktrees
+.worktrees/
+
 # Website build output
 flux/website/dist/
 
