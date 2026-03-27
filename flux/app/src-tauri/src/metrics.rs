@@ -143,9 +143,7 @@ pub fn read_disk_io_linux() -> (u64, u64) {
 
 // --- CPU temperature helper ---
 
-pub fn read_cpu_temp() -> Option<f32> {
-    let mut components = Components::new();
-    components.refresh(true);
+pub fn read_cpu_temp(components: &Components) -> Option<f32> {
     components.iter()
         .filter(|c| {
             let l = c.label().to_lowercase();
@@ -162,6 +160,8 @@ pub fn system_cpu(state: State<'_, AppState>) -> CpuInfo {
     let mut sys = state.sys.lock().unwrap();
     sys.refresh_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::nothing().with_cpu_usage()));
     let cpus = sys.cpus();
+    let mut components = Components::new();
+    components.refresh(true);
     CpuInfo {
         usage: cpus.iter().map(|c| c.cpu_usage()).collect(),
         avg_usage: sys.global_cpu_usage(),
@@ -169,7 +169,7 @@ pub fn system_cpu(state: State<'_, AppState>) -> CpuInfo {
         name: cpus.first().map(|c| c.brand().to_string()).unwrap_or_default(),
         cores: System::physical_core_count().unwrap_or(0),
         threads: cpus.len(),
-        cpu_temp: read_cpu_temp(),
+        cpu_temp: read_cpu_temp(&components),
     }
 }
 

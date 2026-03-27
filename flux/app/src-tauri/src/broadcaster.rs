@@ -18,6 +18,8 @@ pub fn start(app: AppHandle) {
         #[cfg(target_os = "linux")]
         let mut prev_disk: (u64, u64, Instant) = (0, 0, Instant::now());
         let mut slow_tick: u32 = 0;
+        let mut networks = Networks::new_with_refreshed_list();
+        let mut components = Components::new_with_refreshed_list();
 
         // Emit OS info once at startup
         let os_payload = serde_json::json!({
@@ -31,12 +33,16 @@ pub fn start(app: AppHandle) {
         loop {
             let tick_start = Instant::now();
 
+            // Refresh persistent state objects in-place
+            networks.refresh(false);
+            components.refresh(false);
+
             // --- CPU ---
             sys.refresh_specifics(
                 RefreshKind::nothing()
                     .with_cpu(CpuRefreshKind::nothing().with_cpu_usage()),
             );
-            let cpu_temp = read_cpu_temp();
+            let cpu_temp = read_cpu_temp(&components);
             let cpu_payload = serde_json::json!({
                 "usage":     sys.cpus().iter().map(|c| c.cpu_usage()).collect::<Vec<_>>(),
                 "avg_usage": sys.global_cpu_usage(),
@@ -60,7 +66,6 @@ pub fn start(app: AppHandle) {
             let _ = app.emit("system:memory", &mem_payload);
 
             // --- Network ---
-            let networks = Networks::new_with_refreshed_list();
             let net_payload: Vec<serde_json::Value> = networks.iter().map(|(name, data)| {
                 let total_rx = data.total_received();
                 let total_tx = data.total_transmitted();
@@ -81,7 +86,7 @@ pub fn start(app: AppHandle) {
             let _ = app.emit("system:network", &net_payload);
 
             // --- GPU ---
-            let gpu = collect_gpu(&nvml);
+            let gpu = collect_gpu(&nvml, &mut components);
             let _ = app.emit("system:gpu", &gpu);
 
             // --- Disk I/O (Linux only) ---
@@ -145,7 +150,7 @@ pub fn start(app: AppHandle) {
     });
 }
 
-fn collect_gpu(nvml: &Option<Nvml>) -> Option<serde_json::Value> {
+fn collect_gpu(nvml: &Option<Nvml>, components: &mut Components) -> Option<serde_json::Value> {
     use std::fs;
 
     // NVIDIA
@@ -167,8 +172,6 @@ fn collect_gpu(nvml: &Option<Nvml>) -> Option<serde_json::Value> {
     // AMD sysfs (Linux only)
     #[cfg(target_os = "linux")]
     {
-        let mut components = Components::new();
-        components.refresh(true);
         let gpu_temp = components.iter()
             .filter(|c| { let l = c.label().to_lowercase(); l.contains("gpu") || l.contains("amdgpu") })
             .filter_map(|c| c.temperature())
