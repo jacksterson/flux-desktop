@@ -8,11 +8,10 @@ use crate::AppState;
 #[cfg(target_os = "linux")]
 use crate::metrics::read_disk_io_linux;
 
-const FAST_MS: u64 = 2000;
-const SLOW_TICKS: u32 = 15; // 15 × 2 s = 30 s
-
-pub fn start(app: AppHandle) {
+pub fn start(app: AppHandle, interval_ms: u64) {
     std::thread::spawn(move || {
+        let fast_ms = interval_ms.max(100); // floor at 100ms to prevent spin loops
+        let slow_ticks = (30_000u64 / fast_ms).max(1) as u32;
         let mut sys = System::new_all();
         let mut prev_net: HashMap<String, (u64, u64)> = HashMap::new();
         #[cfg(target_os = "linux")]
@@ -115,7 +114,7 @@ pub fn start(app: AppHandle) {
 
             // --- Slow metrics (every 30 s) ---
             slow_tick += 1;
-            if slow_tick >= SLOW_TICKS {
+            if slow_tick >= slow_ticks {
                 slow_tick = 0;
 
                 // Disk capacity
@@ -144,8 +143,8 @@ pub fn start(app: AppHandle) {
 
             // Sleep for remainder of 2 s tick
             let elapsed = tick_start.elapsed();
-            if elapsed < Duration::from_millis(FAST_MS) {
-                std::thread::sleep(Duration::from_millis(FAST_MS) - elapsed);
+            if elapsed < Duration::from_millis(fast_ms) {
+                std::thread::sleep(Duration::from_millis(fast_ms) - elapsed);
             }
         }
     });

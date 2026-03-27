@@ -676,7 +676,7 @@ pub fn run() {
             }
             tray_builder.build(app)?;
 
-            broadcaster::start(app.handle().clone());
+            broadcaster::start(app.handle().clone(), 2000);
 
             Ok(())
         })
