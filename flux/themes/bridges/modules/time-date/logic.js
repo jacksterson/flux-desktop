@@ -21,10 +21,11 @@ function applyState() {
     document.getElementById("mission-timer").style.display = state.showMissionTime ? "block" : "none";
 }
 
-window.addEventListener('storage', () => {
+function _handleStorage() {
     state = JSON.parse(localStorage.getItem("flux_time_state")) || DEFAULT_STATE;
     applyState();
-});
+}
+window.addEventListener('storage', _handleStorage);
 
 function updateClock() {
     const now = new Date();
@@ -110,4 +111,10 @@ if (settingsBtn) {
 
 applyState();
 updateClock();
-setInterval(updateClock, 1000);
+const _clockInterval = setInterval(updateClock, 1000);
+
+function _cleanup() {
+    clearInterval(_clockInterval);
+    window.removeEventListener('storage', _handleStorage);
+}
+window._fluxCleanup = _cleanup;
