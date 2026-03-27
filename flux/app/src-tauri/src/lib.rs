@@ -443,7 +443,7 @@ fn open_themes_folder(app: AppHandle) -> Result<(), String> {
 }
 
 /// Shared install logic: validate and move extracted archive to user themes dir.
-fn do_install_archive(path: &std::path::Path, resource_dir: &std::path::Path) -> Result<ThemeInfo, String> {
+pub(crate) fn do_install_archive(path: &std::path::Path, resource_dir: &std::path::Path) -> Result<ThemeInfo, String> {
     let extract_dir = archive::extract_to_temp(path)?;
     let result = (|| -> Result<ThemeInfo, String> {
         let (theme_id, _) = archive::validate_extracted(&extract_dir)?;
@@ -577,6 +577,59 @@ fn wizard_escape(app: AppHandle, state: State<'_, AppState>, active_modules: Vec
 #[tauri::command]
 fn get_config(state: State<'_, AppState>) -> EngineConfig {
     state.config.lock().unwrap().clone()
+}
+
+// --- Widget Editor Commands ---
+
+#[tauri::command]
+fn open_widget_editor(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("widget-editor") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        Ok(())
+    } else {
+        let url = WebviewUrl::CustomProtocol(
+            "flux-module://_flux/widget-editor/index.html".parse::<tauri::Url>().unwrap()
+        );
+        WebviewWindowBuilder::new(&app, "widget-editor", url)
+            .title("Widget Editor")
+            .inner_size(1280.0, 900.0)
+            .min_inner_size(960.0, 640.0)
+            .decorations(true)
+            .transparent(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn save_fluxwidget(path: String, json: String) -> Result<(), String> {
+    let path = std::path::Path::new(&path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("fluxwidget.tmp");
+    std::fs::write(&tmp, &json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+fn load_fluxwidget(path: String) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn export_widget_package(
+    _app: AppHandle,
+    _name: String,
+    _module_id: String,
+    _files_json: String
+) -> Result<ThemeInfo, String> {
+    Err("Not implemented yet".to_string())
 }
 
 #[tauri::command]
@@ -1216,6 +1269,7 @@ pub fn run() {
             get_module_settings_schema, get_module_settings, set_module_setting,
             install_theme_archive, pick_and_install_theme, uninstall_theme,
             open_wizard, wizard_launch, wizard_escape,
+            open_widget_editor, save_fluxwidget, load_fluxwidget, export_widget_package,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -1521,5 +1575,26 @@ mod tests {
         let loaded = read_config(&tmp);
         assert_eq!(loaded.engine.active_modules, vec!["system-stats", "time-date"]);
         std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn save_and_load_fluxwidget_roundtrip() {
+        let path = std::env::temp_dir()
+            .join(format!("flux_fluxwidget_test_{}.fluxwidget", std::process::id()));
+        let original = r#"{"version":1,"components":[]}"#.to_string();
+
+        // --- save logic (mirrors save_fluxwidget) ---
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let tmp = path.with_extension("fluxwidget.tmp");
+        std::fs::write(&tmp, &original).unwrap();
+        std::fs::rename(&tmp, &path).unwrap();
+
+        // --- load logic (mirrors load_fluxwidget) ---
+        let loaded = std::fs::read_to_string(&path).unwrap();
+
+        assert_eq!(original, loaded);
+        std::fs::remove_file(&path).ok();
     }
 }
