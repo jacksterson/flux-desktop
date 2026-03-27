@@ -1012,7 +1012,9 @@ async function runExport(modal) {
     const height   = parseInt(document.getElementById('exp-h').value) || 300;
 
     if (!name || !moduleId) {
-        showToast('Name and Module ID are required.', 'error');
+        const statusEl = document.getElementById('exp-status');
+        statusEl.textContent = 'Name and Module ID are required.';
+        statusEl.style.display = 'block';
         return;
     }
 

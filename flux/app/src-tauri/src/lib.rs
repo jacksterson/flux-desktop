@@ -667,9 +667,9 @@ fn export_widget_package(
     zip.finish().map_err(|e| e.to_string())?;
 
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let info = do_install_archive(&temp_zip, &resource_dir)?;
+    let result = do_install_archive(&temp_zip, &resource_dir);
     let _ = std::fs::remove_file(&temp_zip);
-    Ok(info)
+    result
 }
 
 #[tauri::command]
