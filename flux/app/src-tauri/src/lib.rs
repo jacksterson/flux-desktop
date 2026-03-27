@@ -1,4 +1,5 @@
 mod desktop_layer;
+pub mod metrics;
 mod paths;
 use paths::{ensure_flux_dirs, flux_modules_dir, flux_user_dir};
 
