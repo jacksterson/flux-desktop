@@ -722,13 +722,26 @@ pub fn run() {
                 let mut parts = theme_rel.splitn(2, '/');
                 let theme_id = parts.next().unwrap_or("");
                 let file_rel  = parts.next().unwrap_or("");
-                let user_base = flux_user_themes_dir().join(theme_id);
-                let bundled_base = resource_dir.join("themes").join(theme_id);
+
+                // Reject theme_id that looks like a path traversal
+                if theme_id.is_empty() || theme_id.contains("..") || theme_id.contains('/') || theme_id.contains('\\') {
+                    return tauri::http::Response::builder().status(400).body(Vec::new()).unwrap();
+                }
+
+                let user_themes_root = flux_user_themes_dir();
+                let bundled_themes_root = resource_dir.join("themes");
+                let user_base = user_themes_root.join(theme_id);
+                let bundled_base = bundled_themes_root.join(theme_id);
                 let theme_base = if user_base.exists() { user_base } else { bundled_base };
                 let candidate = theme_base.join(file_rel);
                 if let Ok(canonical) = candidate.canonicalize() {
+                    // Verify candidate is within a valid themes root (double-check against both roots)
+                    let user_root_canonical = user_themes_root.canonicalize().unwrap_or(user_themes_root);
+                    let bundled_root_canonical = bundled_themes_root.canonicalize().unwrap_or(bundled_themes_root);
                     let base_canonical = theme_base.canonicalize().unwrap_or(theme_base.clone());
-                    if canonical.starts_with(&base_canonical) {
+                    if canonical.starts_with(&base_canonical)
+                        && (canonical.starts_with(&user_root_canonical) || canonical.starts_with(&bundled_root_canonical))
+                    {
                         if let Ok(content) = fs::read(&canonical) {
                             let ext = canonical.extension()
                                 .and_then(|e| e.to_str()).unwrap_or("");
