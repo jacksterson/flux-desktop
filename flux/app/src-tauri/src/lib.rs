@@ -1,4 +1,6 @@
 mod desktop_layer;
+pub mod config;
+use config::{EngineConfig, read_config, write_config, config_exists};
 pub mod metrics;
 pub mod broadcaster;
 mod paths;
