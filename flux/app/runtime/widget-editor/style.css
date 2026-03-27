@@ -209,3 +209,49 @@ label {
 .rh-nw { top: -4px;    left: -4px;   cursor: nw-resize; }
 .rh-se { bottom: -4px; right: -4px;  cursor: se-resize; }
 .rh-sw { bottom: -4px; left: -4px;   cursor: sw-resize; }
+
+/* ── Properties panel fields ────────────────────────────────────────────────── */
+
+.prop-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.prop-label {
+    font-size: 10px;
+    color: #888;
+    width: 80px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.prop-input {
+    flex: 1;
+    min-width: 0;
+    background: #0d1117;
+    color: #ccc;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    padding: 3px 5px;
+    font-size: 11px;
+    font-family: monospace;
+}
+.prop-input:focus {
+    outline: none;
+    border-color: #00bfff;
+}
+input[type="color"].prop-input {
+    padding: 1px 2px;
+    height: 22px;
+    cursor: pointer;
+}
+input[type="checkbox"].prop-input {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+input[type="range"].prop-input {
+    padding: 0;
+}

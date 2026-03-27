@@ -160,6 +160,21 @@ const SOURCE_EVENTS = {
     battery_pct:    'system:battery',
 };
 
+const DATA_SOURCES = [
+    { key: 'cpu_avg',         label: 'CPU Usage %' },
+    { key: 'cpu_temp',        label: 'CPU Temp °C' },
+    { key: 'ram_pct',         label: 'RAM Usage %' },
+    { key: 'ram_used_gb',     label: 'RAM Used GB' },
+    { key: 'gpu_pct',         label: 'GPU Usage %' },
+    { key: 'gpu_temp',        label: 'GPU Temp °C' },
+    { key: 'vram_pct',        label: 'VRAM Usage %' },
+    { key: 'net_in_kbps',     label: 'Network In KB/s' },
+    { key: 'net_out_kbps',    label: 'Network Out KB/s' },
+    { key: 'disk_read_mbps',  label: 'Disk Read MB/s' },
+    { key: 'disk_write_mbps', label: 'Disk Write MB/s' },
+    { key: 'battery_pct',     label: 'Battery %' },
+];
+
 let _liveUnsubs = [];
 const _lgHistory = {};
 
@@ -535,10 +550,163 @@ function drawCircleMeter(canvasEl, value) {
     }
 }
 
+// ── Property field builders ───────────────────────────────────────────────────
+
+function propRow(label, inputHtml) {
+    return `<div class="prop-row"><label class="prop-label">${escHtml(label)}</label>${inputHtml}</div>`;
+}
+function propNumber(label, key, val, min = undefined, max = undefined) {
+    const minAttr = min !== undefined ? `min="${min}"` : '';
+    const maxAttr = max !== undefined ? `max="${max}"` : '';
+    return propRow(label, `<input class="prop-input" type="number" data-prop="${escHtml(key)}" value="${escHtml(String(val))}" ${minAttr} ${maxAttr}>`);
+}
+function propText(label, key, val) {
+    return propRow(label, `<input class="prop-input" type="text" data-prop="${escHtml(key)}" value="${escHtml(String(val))}">`);
+}
+function propColor(label, key, val) {
+    return propRow(label, `<input class="prop-input" type="color" data-prop="${escHtml(key)}" value="${escHtml(String(val))}">`);
+}
+function propRange(label, key, val, min = 0, max = 100) {
+    return propRow(label, `<input class="prop-input" type="range" data-prop="${escHtml(key)}" value="${escHtml(String(val))}" min="${min}" max="${max}">`);
+}
+function propSelect(label, key, val, options) {
+    const opts = options.map(o => `<option value="${escHtml(o)}" ${o === val ? 'selected' : ''}>${escHtml(o)}</option>`).join('');
+    return propRow(label, `<select class="prop-input" data-prop="${escHtml(key)}">${opts}</select>`);
+}
+function propCheck(label, key, val) {
+    return propRow(label, `<input class="prop-input" type="checkbox" data-prop="${escHtml(key)}" ${val ? 'checked' : ''}>`);
+}
+function propSource(label, key, val) {
+    const opts = DATA_SOURCES.map(s => `<option value="${escHtml(s.key)}" ${s.key === val ? 'selected' : ''}>${escHtml(s.label)}</option>`).join('');
+    return propRow(label, `<select class="prop-input" data-prop="${escHtml(key)}">${opts}</select>`);
+}
+
+// ── Apply property changes ────────────────────────────────────────────────────
+
+function applyPropChange(comp, propPath, rawValue) {
+    // propPath is like 'x', 'width', 'opacity', 'props.color', 'props.fontSize'
+    let value = rawValue;
+    // Coerce types based on input
+    if (typeof rawValue === 'string' && rawValue !== '' && !isNaN(rawValue)) {
+        value = parseFloat(rawValue);
+    }
+    if (propPath.startsWith('props.')) {
+        const key = propPath.slice(6);
+        store.updateProps(comp.id, { [key]: value });
+    } else {
+        store.update(comp.id, { [propPath]: value });
+    }
+    renderCanvas();
+    pushHistory();
+}
+
 // ── Stubs for later tasks ─────────────────────────────────────────────────────
 
 function renderProperties() {
-    // Implemented in Task 8
+    const container = document.getElementById('properties-content');
+    if (!activeId) {
+        container.innerHTML = '<p class="empty-state">Select a component to edit.</p>';
+        return;
+    }
+    const comp = store.getById(activeId);
+    if (!comp) {
+        container.innerHTML = '<p class="empty-state">Select a component to edit.</p>';
+        return;
+    }
+
+    const fields = [];
+
+    // Common fields
+    fields.push(
+        propNumber('X',       'x',       comp.x),
+        propNumber('Y',       'y',       comp.y),
+        propNumber('W',       'width',   comp.width,  20),
+        propNumber('H',       'height',  comp.height, 10),
+        propRange( 'Opacity', 'opacity', comp.opacity, 0, 100),
+    );
+
+    // Per-type fields
+    switch (comp.type) {
+        case 'text':
+            fields.push(
+                propText(    'Content',        'props.content',      comp.props.content),
+                propNumber(  'Font Size',      'props.fontSize',     comp.props.fontSize, 6),
+                propColor(   'Color',          'props.color',        comp.props.color),
+                propSelect(  'Font Family',    'props.fontFamily',   comp.props.fontFamily, ['monospace','sans-serif','serif','cursive']),
+                propSelect(  'Font Weight',    'props.fontWeight',   comp.props.fontWeight, ['normal','bold']),
+                propSelect(  'Text Align',     'props.textAlign',    comp.props.textAlign,  ['left','center','right']),
+                propNumber(  'Letter Spacing', 'props.letterSpacing',comp.props.letterSpacing, 0),
+            );
+            break;
+        case 'metric':
+            fields.push(
+                propSource(  'Source',         'props.source',       comp.props.source),
+                propText(    'Label',          'props.label',        comp.props.label),
+                propText(    'Suffix',         'props.suffix',       comp.props.suffix),
+                propNumber(  'Font Size',      'props.fontSize',     comp.props.fontSize, 6),
+                propColor(   'Color',          'props.color',        comp.props.color),
+                propSelect(  'Font Family',    'props.fontFamily',   comp.props.fontFamily, ['monospace','sans-serif','serif']),
+                propNumber(  'Decimal Places', 'props.decimalPlaces',comp.props.decimalPlaces, 0, 3),
+            );
+            break;
+        case 'progressbar':
+            fields.push(
+                propSource(  'Source',        'props.source',      comp.props.source),
+                propSelect(  'Orientation',   'props.orientation', comp.props.orientation, ['horizontal','vertical']),
+                propColor(   'Bar Color',     'props.fgColor',     comp.props.fgColor),
+                propColor(   'Background',    'props.bgColor',     comp.props.bgColor),
+                propNumber(  'Border Radius', 'props.borderRadius',comp.props.borderRadius, 0),
+            );
+            break;
+        case 'linegraph':
+            fields.push(
+                propSource(  'Source',       'props.source',     comp.props.source),
+                propColor(   'Line Color',   'props.lineColor',  comp.props.lineColor),
+                propText(    'Fill Color',   'props.fillColor',  comp.props.fillColor),
+                propNumber(  'Max Points',   'props.maxPoints',  comp.props.maxPoints, 10, 120),
+                propCheck(   'Baseline',     'props.showBaseline',comp.props.showBaseline),
+            );
+            break;
+        case 'circlemeter':
+            fields.push(
+                propSource(  'Source',       'props.source',     comp.props.source),
+                propColor(   'Arc Color',    'props.color',      comp.props.color),
+                propColor(   'Track Color',  'props.trackColor', comp.props.trackColor),
+                propNumber(  'Stroke Width', 'props.strokeWidth',comp.props.strokeWidth, 1),
+                propNumber(  'Start Angle',  'props.startAngle', comp.props.startAngle),
+                propCheck(   'Show Value',   'props.showValue',  comp.props.showValue),
+                propNumber(  'Font Size',    'props.fontSize',   comp.props.fontSize, 6),
+                propColor(   'Value Color',  'props.valueColor', comp.props.valueColor),
+            );
+            break;
+        case 'clock':
+            fields.push(
+                propSelect(  'Format',      'props.format',     comp.props.format,   ['HH:mm:ss','HH:mm','hh:mm A']),
+                propText(    'Timezone',    'props.timezone',   comp.props.timezone),
+                propNumber(  'Font Size',   'props.fontSize',   comp.props.fontSize, 6),
+                propColor(   'Color',       'props.color',      comp.props.color),
+                propSelect(  'Font Family', 'props.fontFamily', comp.props.fontFamily,['monospace','sans-serif','serif']),
+            );
+            break;
+        case 'divider':
+            fields.push(
+                propSelect(  'Orientation', 'props.orientation', comp.props.orientation, ['horizontal','vertical']),
+                propColor(   'Color',       'props.color',       comp.props.color),
+                propNumber(  'Thickness',   'props.thickness',   comp.props.thickness, 1),
+                propNumber(  'Margin',      'props.margin',      comp.props.margin, 0),
+            );
+            break;
+    }
+
+    container.innerHTML = fields.join('');
+
+    // Wire up change events
+    container.querySelectorAll('[data-prop]').forEach(input => {
+        const event = input.type === 'range' ? 'input' : 'change';
+        input.addEventListener(event, () => {
+            applyPropChange(comp, input.dataset.prop, input.type === 'checkbox' ? input.checked : input.value);
+        });
+    });
 }
 
 function renderLayers() {
