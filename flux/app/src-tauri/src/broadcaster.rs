@@ -98,8 +98,8 @@ pub fn start(app: AppHandle) {
                 let el = now.duration_since(prev_disk.2).as_secs_f32();
                 let disk_io = if el > 0.0 {
                     DiskIoInfo {
-                        read:  Some(((td_r.saturating_sub(prev_disk.0) as f32 / el) as u64)),
-                        write: Some(((td_w.saturating_sub(prev_disk.1) as f32 / el) as u64)),
+                        read:  Some((td_r.saturating_sub(prev_disk.0) as f32 / el) as u64),
+                        write: Some((td_w.saturating_sub(prev_disk.1) as f32 / el) as u64),
                     }
                 } else {
                     DiskIoInfo { read: Some(0), write: Some(0) }
