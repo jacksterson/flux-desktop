@@ -5,6 +5,7 @@ pub mod metrics;
 pub mod broadcaster;
 mod paths;
 mod archive;
+mod module_settings;
 use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir};
 
 use sysinfo::System;
