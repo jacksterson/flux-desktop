@@ -4,7 +4,9 @@ use config::{EngineConfig, read_config, write_config, config_exists};
 pub mod metrics;
 pub mod broadcaster;
 mod paths;
-use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir};
+mod archive;
+mod module_settings;
+use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
@@ -66,6 +68,8 @@ pub struct ModuleManifest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub active: bool,
+    #[serde(default)]
+    pub settings: Vec<SettingDef>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -88,6 +92,7 @@ pub struct ModuleInfo {
     pub id: String,
     pub name: String,
     pub active: bool,
+    pub has_settings: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,6 +104,23 @@ pub struct ThemeInfo {
     pub preview_url: Option<String>,
     pub modules: Vec<ModuleInfo>,
     pub source: String, // "user" | "bundled"
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SettingDef {
+    pub key: String,
+    pub label: String,
+    #[serde(rename = "type")]
+    pub field_type: String,
+    pub default: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 // --- Window State Persistence ---
@@ -262,6 +284,15 @@ fn get_module_name_from_dir(module_dir: &std::path::Path) -> String {
         })
 }
 
+fn get_module_has_settings(module_dir: &std::path::Path) -> bool {
+    let manifest_path = module_dir.join("module.json");
+    fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<ModuleManifest>(&s).ok())
+        .map(|m| !m.settings.is_empty())
+        .unwrap_or(false)
+}
+
 fn scan_theme_dir(
     themes_dir: &std::path::Path,
     source: &str,
@@ -287,10 +318,15 @@ fn scan_theme_dir(
             format!("flux-module://_theme/{}/{}", manifest.id, filename)
         });
         let modules_dir = theme_dir.join("modules");
-        let modules = manifest.modules.iter().map(|mid| ModuleInfo {
-            id: mid.clone(),
-            name: get_module_name_from_dir(&modules_dir.join(mid)),
-            active: active.contains_key(mid),
+        let modules = manifest.modules.iter().map(|mid| {
+            let module_dir = modules_dir.join(mid);
+            let has_settings = get_module_has_settings(&module_dir);
+            ModuleInfo {
+                id: mid.clone(),
+                name: get_module_name_from_dir(&module_dir),
+                active: active.contains_key(mid),
+                has_settings,
+            }
         }).collect();
         out.push(ThemeInfo {
             id: manifest.id,
@@ -323,6 +359,35 @@ fn find_theme_manifest(id: &str, resource_dir: &std::path::Path) -> Result<Theme
                else { return Err(format!("theme '{}' not found", id)); };
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn find_module_manifest(id: &str, resource_dir: &std::path::Path) -> Result<ModuleManifest, String> {
+    let user_path = flux_modules_dir().join(id).join("module.json");
+    if user_path.exists() {
+        let content = fs::read_to_string(&user_path).map_err(|e| e.to_string())?;
+        return serde_json::from_str(&content).map_err(|e| e.to_string());
+    }
+    let user_themes = flux_user_themes_dir();
+    if let Ok(entries) = fs::read_dir(&user_themes) {
+        for entry in entries.flatten() {
+            let p = entry.path().join("modules").join(id).join("module.json");
+            if p.exists() {
+                let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+                return serde_json::from_str(&content).map_err(|e| e.to_string());
+            }
+        }
+    }
+    let bundled = resource_dir.join("themes");
+    if let Ok(entries) = fs::read_dir(&bundled) {
+        for entry in entries.flatten() {
+            let p = entry.path().join("modules").join(id).join("module.json");
+            if p.exists() {
+                let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+                return serde_json::from_str(&content).map_err(|e| e.to_string());
+            }
+        }
+    }
+    Err(format!("module '{}' not found", id))
 }
 
 #[tauri::command]
@@ -376,6 +441,84 @@ fn open_themes_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Shared install logic: validate and move extracted archive to user themes dir.
+fn do_install_archive(path: &std::path::Path, resource_dir: &std::path::Path) -> Result<ThemeInfo, String> {
+    let extract_dir = archive::extract_to_temp(path)?;
+    let result = (|| -> Result<ThemeInfo, String> {
+        let (theme_id, _) = archive::validate_extracted(&extract_dir)?;
+        // Check for duplicate
+        let user_theme_dest = flux_user_themes_dir().join(&theme_id);
+        if user_theme_dest.exists() {
+            return Err(format!("Theme '{}' is already installed", theme_id));
+        }
+        // Move extracted dir to user themes
+        std::fs::rename(&extract_dir, &user_theme_dest)
+            .map_err(|e| format!("Could not install theme: {}", e))?;
+        // Read the manifest we just installed
+        find_theme_manifest(&theme_id, resource_dir)
+            .map(|m| ThemeInfo {
+                id: m.id,
+                name: m.name,
+                description: m.description,
+                version: m.version,
+                preview_url: m.preview.map(|f| format!("flux-module://_theme/{}/{}", theme_id, f)),
+                modules: vec![],
+                source: "user".to_string(),
+            })
+    })();
+    // Always clean up extract_dir if it still exists (rename failed or error before rename)
+    if extract_dir.exists() {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+    }
+    result
+}
+
+#[tauri::command]
+fn install_theme_archive(app: AppHandle, path: String) -> Result<ThemeInfo, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    do_install_archive(std::path::Path::new(&path), &resource_dir)
+}
+
+#[tauri::command]
+fn pick_and_install_theme(app: AppHandle) -> Result<ThemeInfo, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app.dialog()
+        .file()
+        .add_filter("Theme Archive", &["zip", "7z", "gz", "tgz"])
+        .blocking_pick_file();
+    let file_path = picked
+        .ok_or_else(|| "cancelled".to_string())?
+        .into_path()
+        .map_err(|e| e.to_string())?;
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    do_install_archive(&file_path, &resource_dir)
+}
+
+#[tauri::command]
+fn uninstall_theme(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    // Deactivate theme first if any modules are active
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    if let Ok(manifest) = find_theme_manifest(&id, &resource_dir) {
+        let active_ids: Vec<String> = manifest.modules.iter()
+            .filter(|mid| state.active_modules.lock().unwrap().contains_key(*mid))
+            .cloned()
+            .collect();
+        if !active_ids.is_empty() {
+            for mid in &active_ids { close_module_window(mid, &app, &state); }
+            let mut cfg = state.config.lock().unwrap();
+            let active_set: std::collections::HashSet<&str> = active_ids.iter().map(|s| s.as_str()).collect();
+            cfg.engine.active_modules.retain(|m| !active_set.contains(m.as_str()));
+            write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+        }
+    }
+    // Remove theme directory
+    let theme_dir = flux_user_themes_dir().join(&id);
+    if !theme_dir.exists() {
+        return Err(format!("Theme '{}' is not installed", id));
+    }
+    std::fs::remove_dir_all(&theme_dir).map_err(|e| format!("Could not remove theme: {}", e))
+}
+
 #[tauri::command]
 fn open_command_center(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("command-center") {
@@ -388,8 +531,76 @@ fn open_command_center(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_wizard(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        Ok(())
+    } else {
+        build_wizard_window(&app)
+    }
+}
+
+#[tauri::command]
+fn wizard_launch(app: AppHandle, state: State<'_, AppState>, active_modules: Vec<String>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.active_modules = active_modules.clone();
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    for id in &active_modules {
+        if let Err(e) = launch_module_window(id, &app, &state) {
+            eprintln!("[flux] Warning: could not launch '{}' from wizard: {}", id, e);
+        }
+    }
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn wizard_escape(app: AppHandle, state: State<'_, AppState>, active_modules: Vec<String>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.active_modules = active_modules;
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    open_command_center(app.clone())?;
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn get_config(state: State<'_, AppState>) -> EngineConfig {
     state.config.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_module_settings_schema(app: AppHandle, module_id: String) -> Result<Vec<SettingDef>, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_module_manifest(&module_id, &resource_dir)?;
+    Ok(manifest.settings)
+}
+
+#[tauri::command]
+fn get_module_settings(app: AppHandle, module_id: String) -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_module_manifest(&module_id, &resource_dir)?;
+    let settings_file = flux_module_settings_dir().join(format!("{}.toml", module_id));
+    Ok(module_settings::read_settings(&settings_file, &manifest.settings))
+}
+
+#[tauri::command]
+fn set_module_setting(module_id: String, key: String, value: serde_json::Value) -> Result<(), String> {
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return Err("Invalid module_id".to_string());
+    }
+    let settings_file = flux_module_settings_dir().join(format!("{}.toml", module_id));
+    module_settings::write_setting(&settings_file, &key, &value)
+        .map_err(|e| e.to_string())
 }
 
 fn track_window(window: WebviewWindow) {
@@ -514,6 +725,23 @@ fn build_command_center_window(app: &AppHandle) -> Result<(), String> {
         .min_inner_size(800.0, 600.0)
         .decorations(true)
         .transparent(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn build_wizard_window(app: &AppHandle) -> Result<(), String> {
+    let url = WebviewUrl::CustomProtocol(
+        "flux-module://_flux/wizard/index.html".parse::<tauri::Url>()
+            .map_err(|e| e.to_string())?
+    );
+    WebviewWindowBuilder::new(app, "wizard", url)
+        .title("Welcome to Flux")
+        .inner_size(720.0, 520.0)
+        .min_inner_size(640.0, 480.0)
+        .decorations(true)
+        .transparent(false)
+        .resizable(true)
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -921,7 +1149,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             if is_first_run {
-                build_command_center_window(&handle)?;
+                build_wizard_window(&handle)?;
             } else {
                 let state = handle.state::<AppState>();
                 for id in &active_on_start {
@@ -934,6 +1162,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             drag_window, list_modules, toggle_module,
             open_module_settings, close_window, move_module,
@@ -941,6 +1170,9 @@ pub fn run() {
             list_themes,
             activate_theme, deactivate_theme,
             open_themes_folder, open_command_center, get_config,
+            get_module_settings_schema, get_module_settings, set_module_setting,
+            install_theme_archive, pick_and_install_theme, uninstall_theme,
+            open_wizard, wizard_launch, wizard_escape,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -1056,6 +1288,26 @@ mod tests {
         }"#;
         let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn module_manifest_parses_settings_array() {
+        let json = r#"{
+            "id": "t", "name": "T", "author": "a", "version": "1.0.0",
+            "entry": "index.html",
+            "window": { "width": 400, "height": 300, "transparent": false,
+                        "decorations": true, "windowLevel": "desktop", "resizable": true },
+            "permissions": [],
+            "settings": [
+                { "key": "interval", "label": "Interval", "type": "range",
+                  "default": 2000, "min": 500, "max": 10000, "step": 100, "options": [] }
+            ]
+        }"#;
+        let m: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.settings.len(), 1);
+        assert_eq!(m.settings[0].key, "interval");
+        assert_eq!(m.settings[0].field_type, "range");
+        assert_eq!(m.settings[0].default, serde_json::json!(2000));
     }
 
     #[test]
@@ -1180,5 +1432,51 @@ mod tests {
         assert_eq!(out.len(), 1, "duplicate theme ID should appear only once");
         assert_eq!(out[0].source, "user", "user theme should win over bundled");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn install_theme_archive_validates_zip_in_isolation() {
+        use archive::{extract_to_temp, validate_extracted};
+        use std::io::Write as _;
+
+        let tmp = std::env::temp_dir().join(format!("flux_install_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let zip_path = tmp.join("good.zip");
+        let f = std::fs::File::create(&zip_path).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let opts = zip::write::SimpleFileOptions::default();
+        z.start_file("theme.json", opts).unwrap();
+        z.write_all(br#"{"id":"test-theme","name":"Test","modules":[]}"#).unwrap();
+        z.finish().unwrap();
+
+        let extract_dir = extract_to_temp(&zip_path).unwrap();
+        let (id, _) = validate_extracted(&extract_dir).unwrap();
+        assert_eq!(id, "test-theme");
+        std::fs::remove_dir_all(&extract_dir).ok();
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn module_info_has_settings_field() {
+        let info = ModuleInfo {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            active: false,
+            has_settings: false,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("has_settings"), "ModuleInfo JSON should include has_settings");
+    }
+
+    #[test]
+    fn wizard_launch_writes_config_and_active_modules() {
+        use config::{write_config, read_config, EngineConfig};
+        let tmp = std::env::temp_dir().join(format!("flux_wizard_test_{}.toml", std::process::id()));
+        let mut cfg = EngineConfig::default();
+        cfg.engine.active_modules = vec!["system-stats".to_string(), "time-date".to_string()];
+        write_config(&tmp, &cfg).unwrap();
+        let loaded = read_config(&tmp);
+        assert_eq!(loaded.engine.active_modules, vec!["system-stats", "time-date"]);
+        std::fs::remove_file(&tmp).ok();
     }
 }

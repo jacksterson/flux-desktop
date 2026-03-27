@@ -11,8 +11,10 @@
   --accent-hover: #6ab3ff;
   --danger: #ff5555;
   --danger-hover: #ff3333;
+  --success: #4caf50;
   --radius: 8px;
   --transition: 0.15s ease;
+  --panel-width: 240px;
 }
 
 body {
@@ -21,7 +23,10 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -32,8 +37,7 @@ body {
   justify-content: space-between;
   padding: 18px 28px;
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   background: var(--bg);
   z-index: 10;
 }
@@ -44,6 +48,125 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* ── Install status ── */
+.install-status {
+  padding: 10px 28px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.install-status.installing { color: var(--text-dim); }
+.install-status.success { color: var(--success); }
+.install-status.error { color: var(--danger); }
+
+/* ── Body split layout ── */
+.cc-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Themes grid ── */
+#themes-container {
+  flex: 1;
+  padding: 24px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.status-text {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  padding: 60px 0;
+  text-align: center;
+  font-size: 15px;
+}
+
+/* ── Settings side panel ── */
+.settings-panel {
+  width: var(--panel-width);
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-panel[hidden] { display: none; }
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.settings-panel-title { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.settings-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.settings-close-btn:hover { background: var(--surface-hover); color: var(--text); }
+
+.settings-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Settings fields */
+.setting-field { display: flex; flex-direction: column; gap: 6px; }
+.setting-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.setting-value-label { font-size: 11px; color: var(--text-dim); text-align: right; }
+
+.setting-range-row { display: flex; align-items: center; gap: 8px; }
+.setting-range-row input[type=range] { flex: 1; accent-color: var(--accent); }
+
+.setting-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  width: 100%;
+  cursor: pointer;
+}
+.setting-select:focus { outline: 1px solid var(--accent); }
+
+.setting-toggle-row { display: flex; align-items: center; justify-content: space-between; }
+
+.setting-text-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  width: 100%;
+}
+.setting-text-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 
 /* ── Buttons ── */
 button {
@@ -57,50 +180,14 @@ button {
   white-space: nowrap;
 }
 
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
+.btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover { background: var(--accent-hover); }
 
-.btn-secondary {
-  background: transparent;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-}
-.btn-secondary:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-  border-color: #444;
-}
+.btn-secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--surface-hover); color: var(--text); border-color: #444; }
 
-.btn-danger {
-  background: transparent;
-  color: var(--danger);
-  border: 1px solid currentColor;
-}
-.btn-danger:hover {
-  background: var(--danger-hover);
-  color: #fff;
-  border-color: var(--danger-hover);
-}
-
-/* ── Grid ── */
-#themes-container {
-  padding: 24px 28px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  align-items: start;
-}
-
-.status-text {
-  grid-column: 1 / -1;
-  color: var(--text-dim);
-  padding: 60px 0;
-  text-align: center;
-  font-size: 15px;
-}
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid currentColor; }
+.btn-danger:hover { background: var(--danger-hover); color: #fff; border-color: var(--danger-hover); }
 
 /* ── Theme Card ── */
 .theme-card {
@@ -128,12 +215,7 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.theme-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+.theme-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .theme-body {
   padding: 16px;
@@ -143,16 +225,9 @@ button {
   gap: 12px;
 }
 
-.theme-header {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
+.theme-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .theme-name { font-size: 15px; font-weight: 600; }
 .theme-desc { color: var(--text-dim); font-size: 12px; line-height: 1.6; }
-
 .theme-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ── Module List ── */
@@ -172,27 +247,26 @@ button {
   padding: 4px 0;
 }
 
-.module-name {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text);
+.module-name { flex: 1; font-size: 13px; color: var(--text); }
+
+/* ── Settings gear icon ── */
+.module-settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color var(--transition), background var(--transition);
 }
+.module-settings-btn:hover { color: var(--text); background: var(--surface-hover); }
+.module-settings-btn.active { color: var(--accent); }
 
 /* ── Toggle Switch ── */
-.toggle {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-}
-
+.toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
 .toggle-track {
   position: absolute;
   inset: 0;
@@ -201,10 +275,8 @@ button {
   cursor: pointer;
   transition: background var(--transition);
 }
-
 .toggle input:checked + .toggle-track { background: var(--accent); }
 .toggle input:disabled + .toggle-track { cursor: not-allowed; opacity: 0.5; }
-
 .toggle-track::after {
   content: '';
   position: absolute;
@@ -217,7 +289,6 @@ button {
   transition: transform var(--transition);
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
-
 .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
 
 /* ── Source Badge ── */
@@ -231,4 +302,30 @@ button {
   border-radius: 4px;
   padding: 2px 6px;
   line-height: 1.4;
+}
+
+/* ── Drop overlay ── */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(74, 158, 255, 0.08);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.drop-overlay[hidden] { display: none; }
+
+.drop-overlay-inner {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px 32px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent);
 }
