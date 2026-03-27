@@ -43,3 +43,65 @@ document.getElementById('btn-export').addEventListener('click', () => console.lo
 document.getElementById('preset-ds').addEventListener('click', () => console.log('preset-ds'));
 document.getElementById('preset-md').addEventListener('click', () => console.log('preset-md'));
 document.getElementById('preset-ml').addEventListener('click', () => console.log('preset-ml'));
+
+// Panel dragging and persistence
+const PANEL_IDS = ['panel-components', 'panel-properties', 'panel-layers'];
+
+function savePanelPositions() {
+    const positions = {};
+    for (const id of PANEL_IDS) {
+        const el = document.getElementById(id);
+        positions[id] = { left: el.style.left, top: el.style.top };
+    }
+    localStorage.setItem('flux-editor-panel-positions', JSON.stringify(positions));
+}
+
+function loadPanelPositions() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('flux-editor-panel-positions') || '{}');
+        for (const id of PANEL_IDS) {
+            if (saved[id]) {
+                const el = document.getElementById(id);
+                if (saved[id].left) { el.style.left = saved[id].left; el.style.right = ''; }
+                if (saved[id].top)  { el.style.top  = saved[id].top;  el.style.bottom = ''; }
+            }
+        }
+    } catch (e) {
+        // ignore corrupt storage
+    }
+}
+
+function makePanelDraggable(panel) {
+    const header = panel.querySelector('.panel-header');
+    let dragging = false, ox = 0, oy = 0;
+
+    header.addEventListener('mousedown', e => {
+        dragging = true;
+        ox = e.clientX - panel.offsetLeft;
+        oy = e.clientY - panel.offsetTop;
+        panel.style.right = '';
+        panel.style.bottom = '';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        panel.style.left = (e.clientX - ox) + 'px';
+        panel.style.top  = (e.clientY - oy) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        savePanelPositions();
+    });
+}
+
+// Initialize panel dragging and load saved positions
+loadPanelPositions();
+for (const id of PANEL_IDS) {
+    const panel = document.getElementById(id);
+    if (panel) {
+        makePanelDraggable(panel);
+    }
+}
