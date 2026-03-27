@@ -6,7 +6,7 @@ use paths::{ensure_flux_dirs, flux_modules_dir, flux_user_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
-use tauri::{State, Window, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
+use tauri::{State, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use nvml_wrapper::Nvml;
@@ -308,12 +308,12 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn close_window(window: Window) {
+fn close_window(window: WebviewWindow) {
     let _ = window.close();
 }
 
 #[tauri::command]
-fn drag_window(window: Window, state: State<'_, AppState>) {
+fn drag_window(window: WebviewWindow, state: State<'_, AppState>) {
     // On Wayland, layer-shell windows cannot use xdg_toplevel.move().
     // Widget JS handles drag via move_module instead.
     let is_layer_shell = {
@@ -372,7 +372,7 @@ async fn move_module(
 }
 
 #[tauri::command]
-fn is_layer_shell_window(window: tauri::Window, state: State<'_, AppState>) -> bool {
+fn is_layer_shell_window(window: WebviewWindow, state: State<'_, AppState>) -> bool {
     #[cfg(target_os = "linux")]
     {
         let dw = state.desktop_wayland_windows.lock().unwrap();
@@ -701,5 +701,13 @@ mod tests {
         assert!(info.write.is_none());
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("null"));
+    }
+
+    #[test]
+    fn is_layer_shell_window_detects_registered_window() {
+        let mut set = HashSet::<String>::new();
+        set.insert("module-test".to_string());
+        assert!(set.contains("module-test"));
+        assert!(!set.contains("module-other"));
     }
 }

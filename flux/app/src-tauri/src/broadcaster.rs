@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use sysinfo::{System, Networks, Disks, CpuRefreshKind, RefreshKind, Components};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use nvml_wrapper::Nvml;
 use crate::metrics::{read_cpu_temp, read_battery, DiskIoInfo};
+use crate::AppState;
 #[cfg(target_os = "linux")]
 use crate::metrics::read_disk_io_linux;
 
@@ -13,7 +14,6 @@ const SLOW_TICKS: u32 = 15; // 15 × 2 s = 30 s
 pub fn start(app: AppHandle) {
     std::thread::spawn(move || {
         let mut sys = System::new_all();
-        let nvml = Nvml::init().ok();
         let mut prev_net: HashMap<String, (u64, u64)> = HashMap::new();
         #[cfg(target_os = "linux")]
         let mut prev_disk: (u64, u64, Instant) = (0, 0, Instant::now());
@@ -86,7 +86,8 @@ pub fn start(app: AppHandle) {
             let _ = app.emit("system:network", &net_payload);
 
             // --- GPU ---
-            let gpu = collect_gpu(&nvml, &mut components);
+            let state = app.state::<AppState>();
+            let gpu = collect_gpu(&state.nvml, &mut components);
             let _ = app.emit("system:gpu", &gpu);
 
             // --- Disk I/O (Linux only) ---
