@@ -148,6 +148,10 @@ label {
     cursor: pointer;
 }
 
+.preset-swatch.preset-active {
+    box-shadow: 0 0 0 2px #fff;
+}
+
 #panel-components {
     top: 64px;
     left: 16px;

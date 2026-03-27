@@ -10,6 +10,16 @@ const canvas = document.getElementById('canvas');
 const canvasWidth = document.getElementById('canvas-width');
 const canvasHeight = document.getElementById('canvas-height');
 
+// ── Presets and theming ───────────────────────────────────────────────────────
+
+const PRESETS = {
+    'preset-ds': { bg: '#0A0F1A', primary: '#00BFFF', name: 'Death Stranding HUD' },
+    'preset-md': { bg: '#111111', primary: '#EEEEEE', name: 'Minimal Dark' },
+    'preset-ml': { bg: '#F5F5F5', primary: '#222222', name: 'Minimal Light' },
+};
+
+let defaultColor = '#00bfff'; // Updated by preset system; used as default for NEW components
+
 // ── ComponentStore ────────────────────────────────────────────────────────────
 
 class ComponentStore {
@@ -24,12 +34,12 @@ class ComponentStore {
 
     add(type, props = {}) {
         const defaults = {
-            text:         { content: 'Text', fontSize: 16, color: '#ffffff', fontFamily: 'monospace', fontWeight: 'normal', textAlign: 'left', letterSpacing: 0 },
-            metric:       { source: 'cpu_avg', label: '', suffix: '%', fontSize: 28, color: '#00bfff', fontFamily: 'monospace', decimalPlaces: 1 },
-            progressbar:  { source: 'cpu_avg', orientation: 'horizontal', fgColor: '#00bfff', bgColor: '#1e1e1e', borderRadius: 2 },
-            linegraph:    { source: 'cpu_avg', lineColor: '#00bfff', fillColor: 'rgba(0,191,255,0.15)', maxPoints: 60, showBaseline: false },
-            circlemeter:  { source: 'cpu_avg', color: '#00bfff', trackColor: '#1e1e1e', strokeWidth: 6, startAngle: -90, showValue: true, fontSize: 14, valueColor: '#ffffff' },
-            clock:        { format: 'HH:mm:ss', timezone: 'local', fontSize: 24, color: '#ffffff', fontFamily: 'monospace' },
+            text:         { content: 'Text', fontSize: 16, color: defaultColor, fontFamily: 'monospace', fontWeight: 'normal', textAlign: 'left', letterSpacing: 0 },
+            metric:       { source: 'cpu_avg', label: '', suffix: '%', fontSize: 28, color: defaultColor, fontFamily: 'monospace', decimalPlaces: 1 },
+            progressbar:  { source: 'cpu_avg', orientation: 'horizontal', fgColor: defaultColor, bgColor: '#1e1e1e', borderRadius: 2 },
+            linegraph:    { source: 'cpu_avg', lineColor: defaultColor, fillColor: 'rgba(0,191,255,0.15)', maxPoints: 60, showBaseline: false },
+            circlemeter:  { source: 'cpu_avg', color: defaultColor, trackColor: '#1e1e1e', strokeWidth: 6, startAngle: -90, showValue: true, fontSize: 14, valueColor: '#ffffff' },
+            clock:        { format: 'HH:mm:ss', timezone: 'local', fontSize: 24, color: defaultColor, fontFamily: 'monospace' },
             divider:      { orientation: 'horizontal', color: '#333333', thickness: 1, margin: 4 },
         };
         const component = {
@@ -875,9 +885,20 @@ document.getElementById('btn-export').addEventListener('click', () => console.lo
 
 // ── Presets — implemented in Task 10 ─────────────────────────────────────────
 
-document.getElementById('preset-ds').addEventListener('click', () => console.log('preset-ds'));
-document.getElementById('preset-md').addEventListener('click', () => console.log('preset-md'));
-document.getElementById('preset-ml').addEventListener('click', () => console.log('preset-ml'));
+function applyPreset(presetId) {
+    const preset = PRESETS[presetId];
+    if (!preset) return;
+    document.getElementById('canvas').style.backgroundColor = preset.bg;
+    defaultColor = preset.primary;
+    pushHistory();
+    // Visual feedback: briefly highlight the active swatch
+    document.querySelectorAll('.preset-swatch').forEach(el => el.classList.remove('preset-active'));
+    document.getElementById(presetId).classList.add('preset-active');
+}
+
+document.getElementById('preset-ds').addEventListener('click', () => applyPreset('preset-ds'));
+document.getElementById('preset-md').addEventListener('click', () => applyPreset('preset-md'));
+document.getElementById('preset-ml').addEventListener('click', () => applyPreset('preset-ml'));
 
 // ── Panel dragging and persistence ───────────────────────────────────────────
 
