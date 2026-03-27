@@ -40,12 +40,19 @@ pub fn flux_config_path() -> PathBuf {
     flux_user_data_dir().join("config.toml")
 }
 
-/// Creates ~/Flux/modules, ~/Flux/skins, and ~/.local/share/flux/themes if they do not exist.
+/// Returns ~/.local/share/flux/settings — where per-module settings files live.
+pub fn flux_module_settings_dir() -> PathBuf {
+    flux_user_data_dir().join("settings")
+}
+
+/// Creates ~/Flux/modules, ~/Flux/skins, ~/.local/share/flux/themes, and
+/// ~/.local/share/flux/settings if they do not exist.
 /// Called once at app startup.
 pub fn ensure_flux_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(flux_modules_dir())?;
     std::fs::create_dir_all(flux_skins_dir())?;
     std::fs::create_dir_all(flux_user_themes_dir())?;
+    std::fs::create_dir_all(flux_module_settings_dir())?;
     Ok(())
 }
 
@@ -77,12 +84,10 @@ mod tests {
 
     #[test]
     fn ensure_flux_dirs_creates_directories() {
-        // Exercise the real function — it creates ~/Flux/modules and ~/Flux/skins.
-        // We can't easily redirect it to a temp path without refactoring,
-        // so we call it and verify the directories exist afterward.
         ensure_flux_dirs().expect("ensure_flux_dirs should not fail");
         assert!(flux_modules_dir().exists(), "modules dir should exist after ensure_flux_dirs");
         assert!(flux_skins_dir().exists(), "skins dir should exist after ensure_flux_dirs");
+        assert!(flux_module_settings_dir().exists(), "settings dir should exist after ensure_flux_dirs");
     }
 
     #[test]
@@ -96,5 +101,13 @@ mod tests {
     fn flux_config_path_ends_with_config_toml() {
         let result = flux_config_path();
         assert_eq!(result.file_name().unwrap(), "config.toml");
+    }
+
+    #[test]
+    fn flux_module_settings_dir_is_under_local_share_flux() {
+        let result = flux_module_settings_dir();
+        let data = flux_user_data_dir();
+        assert!(result.starts_with(&data), "settings dir {:?} should be under {:?}", result, data);
+        assert_eq!(result.file_name().unwrap(), "settings");
     }
 }
