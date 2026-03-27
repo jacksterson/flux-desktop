@@ -4,7 +4,7 @@ pub mod broadcaster;
 mod paths;
 use paths::{ensure_flux_dirs, flux_modules_dir, flux_user_dir};
 
-use sysinfo::{System, Components, Networks, CpuRefreshKind, RefreshKind};
+use sysinfo::System;
 use std::sync::Mutex;
 use tauri::{State, Window, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
 use tauri::menu::{Menu, MenuItem};
@@ -121,15 +121,6 @@ pub struct AppState {
     /// IDs of windows that have Wayland layer shell applied.
     /// Used to guard track_window and drag_window.
     pub desktop_wayland_windows: Mutex<HashSet<String>>,
-}
-
-#[derive(Serialize)]
-pub struct GpuStats { usage: u32, vram_used: u64, vram_total: u64, vram_percentage: f32, temp: f32 }
-
-#[derive(Serialize)]
-pub struct SystemStats {
-    cpu_usage: f32, cpu_temp: f32, cpu_freq: u64, ram_used: u64, ram_total: u64, ram_percentage: f32,
-    uptime: String, net_in: u64, net_out: u64, disk_read: Option<u64>, disk_write: Option<u64>, gpu: Option<GpuStats>,
 }
 
 // --- Commands ---
@@ -380,107 +371,18 @@ async fn move_module(
     Ok(())
 }
 
-// --- Metrics Logic ---
-
-#[cfg(target_os = "linux")]
-fn get_linux_gpu_usage() -> u32 {
-    for i in 0..3 {
-        let path = format!("/sys/class/drm/card{}/device/gpu_busy_percent", i);
-        if let Ok(content) = fs::read_to_string(path) { return content.trim().parse::<u32>().unwrap_or(0); }
-    }
-    0
-}
-
-#[cfg(target_os = "linux")]
-fn get_linux_vram_best() -> Option<(u64, u64)> {
-    let mut best = (0, 0);
-    for i in 0..5 {
-        let p = format!("/sys/class/drm/card{}/device", i);
-        let t_p = format!("{}/mem_info_vram_total", p);
-        let u_p = format!("{}/mem_info_vram_used", p);
-        if let (Ok(t_s), Ok(u_s)) = (fs::read_to_string(&t_p), fs::read_to_string(&u_p)) {
-            let t = t_s.trim().parse::<u64>().unwrap_or(0);
-            let u = u_s.trim().parse::<u64>().unwrap_or(0);
-            if t > best.1 { best = (u, t); }
-        }
-    }
-    if best.1 > 0 { Some(best) } else { None }
-}
-
 #[tauri::command]
-fn get_system_stats(state: State<'_, AppState>) -> SystemStats {
-    let mut sys = state.sys.lock().unwrap();
-    let now = Instant::now();
-    sys.refresh_specifics(RefreshKind::nothing().with_cpu(CpuRefreshKind::nothing().with_cpu_usage()));
-    let mut components = Components::new();
-    components.refresh(true);
-    let cpu_temp = components.iter().filter(|c| { let l = c.label().to_lowercase(); l.contains("package") || l.contains("cpu") || l.contains("tctl") }).filter_map(|c| c.temperature()).max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0.0);
-    let mut networks = Networks::new();
-    networks.refresh(true);
-    let (mut tn_in, mut tn_out) = (0, 0);
-    for (_n, net) in networks.iter() { tn_in += net.total_received(); tn_out += net.total_transmitted(); }
-    let (net_in, net_out) = {
-        let mut last = state.last_net_io.lock().unwrap();
-        let el = now.duration_since(last.2).as_secs_f32();
-        let res = if el > 0.0 { ((tn_in.saturating_sub(last.0) as f32 / el) as u64, (tn_out.saturating_sub(last.1) as f32 / el) as u64) } else { (0,0) };
-        *last = (tn_in, tn_out, now); res
-    };
+fn is_layer_shell_window(window: tauri::Window, state: State<'_, AppState>) -> bool {
     #[cfg(target_os = "linux")]
-    let (disk_read, disk_write) = {
-        let (td_r, td_w) = {
-            if let Ok(content) = fs::read_to_string("/proc/diskstats") {
-                let (mut tr, mut tw) = (0u64, 0u64);
-                for line in content.lines() {
-                    let p: Vec<&str> = line.split_whitespace().collect();
-                    if p.len() > 13 {
-                        let dev = p[2];
-                        if dev.starts_with("sd") || dev.starts_with("nvme") {
-                            tr += p[5].parse::<u64>().unwrap_or(0) * 512;
-                            tw += p[9].parse::<u64>().unwrap_or(0) * 512;
-                        }
-                    }
-                }
-                (tr, tw)
-            } else {
-                (0, 0)
-            }
-        };
-        let mut last = state.last_disk_io.lock().unwrap();
-        let el = now.duration_since(last.2).as_secs_f32();
-        let res = if el > 0.0 {
-            (
-                Some((td_r.saturating_sub(last.0) as f32 / el) as u64),
-                Some((td_w.saturating_sub(last.1) as f32 / el) as u64),
-            )
-        } else {
-            (Some(0), Some(0))
-        };
-        *last = (td_r, td_w, now);
-        res
-    };
-
+    {
+        let dw = state.desktop_wayland_windows.lock().unwrap();
+        return dw.contains(window.label());
+    }
     #[cfg(not(target_os = "linux"))]
-    let (disk_read, disk_write) = (None::<u64>, None::<u64>);
-    let mut gpu = None;
-    if let Some(nvml) = &state.nvml {
-        if let Ok(d) = nvml.device_by_index(0) {
-            let m = d.memory_info().ok();
-            let t = d.temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu).ok();
-            let ut = d.utilization_rates().ok().map(|u| u.gpu).unwrap_or(0);
-            gpu = Some(GpuStats { usage: ut, vram_used: m.as_ref().map(|m| m.used).unwrap_or(0), vram_total: m.as_ref().map(|m| m.total).unwrap_or(0), vram_percentage: m.as_ref().map(|m| (m.used as f32 / m.total as f32) * 100.0).unwrap_or(0.0), temp: t.map(|t| t as f32).unwrap_or(0.0) });
-        }
+    {
+        let _ = (window, state);
+        false
     }
-    #[cfg(target_os = "linux")]
-    if gpu.is_none() || gpu.as_ref().map_or(0, |g| g.usage) == 0 {
-        if let Some((u, t)) = get_linux_vram_best() {
-            let gpu_temp = components.iter().filter(|c| c.label().to_lowercase().contains("gpu") || c.label().to_lowercase().contains("amdgpu")).filter_map(|c| c.temperature()).max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(0.0);
-            let mut usage = get_linux_gpu_usage();
-            if usage == 0 { usage = gpu.as_ref().map_or(0, |g| g.usage); }
-            gpu = Some(GpuStats { usage, vram_used: u, vram_total: t, vram_percentage: (u as f32 / t as f32) * 100.0, temp: gpu_temp });
-        }
-    }
-    let uptime = { let ts = System::uptime(); format!("{:02}:{:02}:{:02}", ts / 3600, (ts % 3600) / 60, ts % 60) };
-    SystemStats { cpu_usage: sys.global_cpu_usage(), cpu_temp, cpu_freq: sys.cpus().first().map(|c| c.frequency()).unwrap_or(0), ram_used: sys.used_memory(), ram_total: sys.total_memory(), ram_percentage: (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0, uptime, net_in, net_out, disk_read, disk_write, gpu }
 }
 
 fn setup_panic_log() {
@@ -635,12 +537,24 @@ pub fn run() {
             }
             tray_builder.build(app)?;
 
+            broadcaster::start(app.handle().clone());
+
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            get_system_stats, drag_window, list_modules, toggle_module,
-            open_module_settings, close_window, move_module
+            drag_window, list_modules, toggle_module,
+            open_module_settings, close_window, move_module,
+            metrics::system_cpu,
+            metrics::system_memory,
+            metrics::system_disk,
+            metrics::system_network,
+            metrics::system_gpu,
+            metrics::system_battery,
+            metrics::system_uptime,
+            metrics::system_os,
+            metrics::system_disk_io,
+            is_layer_shell_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -781,17 +695,11 @@ mod tests {
     }
 
     #[test]
-    fn system_stats_disk_fields_are_optional() {
-        let stats = SystemStats {
-            cpu_usage: 0.0, cpu_temp: 0.0, cpu_freq: 0,
-            ram_used: 0, ram_total: 1, ram_percentage: 0.0,
-            uptime: String::new(),
-            net_in: 0, net_out: 0,
-            disk_read: None,
-            disk_write: None,
-            gpu: None,
-        };
-        assert!(stats.disk_read.is_none());
-        assert!(stats.disk_write.is_none());
+    fn disk_io_info_fields_are_optional() {
+        let info = metrics::DiskIoInfo { read: None, write: None };
+        assert!(info.read.is_none());
+        assert!(info.write.is_none());
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("null"));
     }
 }
