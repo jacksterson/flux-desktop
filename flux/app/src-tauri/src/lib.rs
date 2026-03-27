@@ -410,6 +410,43 @@ pub fn run() {
             let uri = request.uri().to_string();
             let path_part = uri.strip_prefix("flux-module://").unwrap_or("");
 
+            // Special case: _flux/ prefix serves from the bundled runtime directory
+            if let Some(runtime_rel) = path_part.strip_prefix("_flux/") {
+                let runtime_base = ctx.app_handle().path().resource_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("runtime");
+                let candidate = runtime_base.join(runtime_rel);
+                // Guard against path traversal
+                let file_path = if let Ok(canonical) = candidate.canonicalize() {
+                    if canonical.starts_with(&runtime_base.canonicalize().unwrap_or(runtime_base.clone())) {
+                        canonical
+                    } else {
+                        return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+                    }
+                } else {
+                    return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+                };
+                return if let Ok(content) = fs::read(&file_path) {
+                    let ext = file_path.extension().map_or("", |e: &std::ffi::OsStr| e.to_str().unwrap_or(""));
+                    let mime = match ext {
+                        "html" => "text/html",
+                        "js" => "application/javascript",
+                        "css" => "text/css",
+                        "svg" => "image/svg+xml",
+                        "png" => "image/png",
+                        "jpg" | "jpeg" => "image/jpeg",
+                        "json" => "application/json",
+                        _ => "application/octet-stream",
+                    };
+                    tauri::http::Response::builder()
+                        .header("Content-Type", mime)
+                        .body(content)
+                        .unwrap()
+                } else {
+                    tauri::http::Response::builder().status(404).body(Vec::new()).unwrap()
+                };
+            }
+
             // Resolve candidate paths
             let user_base = flux_modules_dir();
             let user_candidate = user_base.join(path_part);

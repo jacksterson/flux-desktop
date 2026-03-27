@@ -36,7 +36,8 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../../modules": "modules"
+      "../../modules": "modules",
+      "../runtime": "runtime"
     },
     "icon": [
       "icons/32x32.png",
