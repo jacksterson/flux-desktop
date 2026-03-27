@@ -31,7 +31,10 @@ impl Default for EngineConfig {
 /// Read config from `path`. Returns default if the file is missing or unparseable.
 pub fn read_config(path: &Path) -> EngineConfig {
     match std::fs::read_to_string(path) {
-        Ok(s) => toml::from_str(&s).unwrap_or_default(),
+        Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
+            eprintln!("[flux] Warning: could not parse config ({}), using defaults", e);
+            EngineConfig::default()
+        }),
         Err(_) => EngineConfig::default(),
     }
 }
@@ -44,8 +47,11 @@ pub fn write_config(path: &Path, config: &EngineConfig) -> io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, s)?;
-    std::fs::rename(&tmp, path)?;
+    std::fs::write(&tmp, &s)?;
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -69,7 +75,7 @@ mod tests {
         let mut c = EngineConfig::default();
         c.engine.broadcast_interval_ms = 3000;
         c.engine.active_modules = vec!["system-stats".into(), "time-date".into()];
-        let tmp = temp_dir().join("flux_config_test_roundtrip.toml");
+        let tmp = temp_dir().join(format!("flux_config_test_roundtrip_{}.toml", std::process::id()));
         write_config(&tmp, &c).expect("write failed");
         let loaded = read_config(&tmp);
         assert_eq!(loaded.engine.broadcast_interval_ms, 3000);
@@ -79,7 +85,7 @@ mod tests {
 
     #[test]
     fn missing_file_returns_defaults() {
-        let tmp = temp_dir().join("flux_config_test_missing_xyz.toml");
+        let tmp = temp_dir().join(format!("flux_config_test_missing_{}.toml", std::process::id()));
         let c = read_config(&tmp);
         assert_eq!(c.engine.broadcast_interval_ms, 2000);
         assert!(c.engine.active_modules.is_empty());
@@ -87,7 +93,7 @@ mod tests {
 
     #[test]
     fn config_exists_reflects_file_presence() {
-        let tmp = temp_dir().join("flux_config_test_exists.toml");
+        let tmp = temp_dir().join(format!("flux_config_test_exists_{}.toml", std::process::id()));
         let _ = std::fs::remove_file(&tmp);
         assert!(!config_exists(&tmp));
         write_config(&tmp, &EngineConfig::default()).unwrap();
