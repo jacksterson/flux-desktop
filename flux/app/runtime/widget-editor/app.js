@@ -131,6 +131,38 @@ class HistoryStack {
     canRedo() { return this._ptr < this._stack.length - 1; }
 }
 
+// ── Component type definitions ────────────────────────────────────────────────
+
+const COMPONENT_TYPES = [
+    { type: 'text',        label: 'Text',         icon: 'T'  },
+    { type: 'metric',      label: 'Metric',        icon: '#'  },
+    { type: 'progressbar', label: 'Progress Bar',  icon: '▬'  },
+    { type: 'linegraph',   label: 'Line Graph',    icon: '📈' },
+    { type: 'circlemeter', label: 'Circle Meter',  icon: '○'  },
+    { type: 'clock',       label: 'Clock',         icon: '🕐' },
+    { type: 'divider',     label: 'Divider',       icon: '—'  },
+];
+
+// ── Live data source → event mapping ─────────────────────────────────────────
+
+const SOURCE_EVENTS = {
+    cpu_avg:        'system:cpu',
+    cpu_temp:       'system:cpu',
+    ram_pct:        'system:memory',
+    ram_used_gb:    'system:memory',
+    gpu_pct:        'system:gpu',
+    gpu_temp:       'system:gpu',
+    vram_pct:       'system:gpu',
+    net_in_kbps:    'system:network',
+    net_out_kbps:   'system:network',
+    disk_read_mbps: 'system:disk-io',
+    disk_write_mbps:'system:disk-io',
+    battery_pct:    'system:battery',
+};
+
+let _liveUnsubs = [];
+const _lgHistory = {};
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const store = new ComponentStore();
@@ -249,6 +281,8 @@ function renderCanvas() {
 
         canvasEl.appendChild(el);
     }
+
+    setupLiveData();
 }
 
 function renderComponentContent(el, comp) {
@@ -319,6 +353,186 @@ function selectComponent(id) {
     renderCanvas();
     renderProperties(); // will be implemented in Task 8
     renderLayers();     // will be implemented in Task 9
+}
+
+// ── Components panel ──────────────────────────────────────────────────────────
+
+function renderComponentsPanel() {
+    const list = document.getElementById('components-list');
+    list.innerHTML = '';
+    for (const { type, label, icon } of COMPONENT_TYPES) {
+        const item = document.createElement('div');
+        item.className = 'comp-type-item';
+        item.innerHTML = `<span class="comp-icon">${icon}</span><span class="comp-label">${label}</span>`;
+        item.title = `Add ${label}`;
+        item.addEventListener('click', () => {
+            // Add at canvas center
+            const canvasEl = document.getElementById('canvas');
+            const cx = Math.max(0, Math.floor((parseInt(canvasEl.style.width) || 400) / 2) - 60);
+            const cy = Math.max(0, Math.floor((parseInt(canvasEl.style.height) || 300) / 2) - 20);
+            const comp = store.add(type);
+            store.update(comp.id, { x: cx, y: cy });
+            selectComponent(comp.id);
+            pushHistory();
+            renderCanvas();
+            renderLayers();
+        });
+        list.appendChild(item);
+    }
+}
+
+// ── Live data ─────────────────────────────────────────────────────────────────
+
+function teardownLiveData() {
+    for (const unsub of _liveUnsubs) { try { unsub(); } catch(e) {} }
+    _liveUnsubs = [];
+}
+
+function setupLiveData() {
+    teardownLiveData();
+    if (!window.WidgetAPI) return;
+
+    // Collect all unique events needed by current components
+    const neededEvents = new Set();
+    for (const comp of store.getAll()) {
+        const src = comp.props && comp.props.source;
+        if (src && SOURCE_EVENTS[src]) neededEvents.add(SOURCE_EVENTS[src]);
+        if (comp.type === 'clock') neededEvents.add('clock-tick');
+    }
+
+    for (const event of neededEvents) {
+        if (event === 'clock-tick') {
+            continue;
+        }
+        const unsub = WidgetAPI.system.subscribe(event, data => {
+            updateLiveElements(data);
+        });
+        if (unsub) _liveUnsubs.push(unsub);
+    }
+
+    // Clock: update every second
+    const clockInterval = setInterval(() => {
+        document.querySelectorAll('.clock-display').forEach(el => {
+            const fmt = el.dataset.format || 'HH:mm:ss';
+            const tz = el.dataset.tz || 'local';
+            el.textContent = formatClock(fmt, tz);
+        });
+    }, 1000);
+    _liveUnsubs.push(() => clearInterval(clockInterval));
+}
+
+function updateLiveElements(data) {
+    // Update .live-value spans
+    document.querySelectorAll('.live-value[data-source]').forEach(el => {
+        const src = el.dataset.source;
+        if (data[src] !== undefined) {
+            const compEl = el.closest('.comp');
+            const compId = compEl && compEl.dataset.id;
+            const comp = compId ? store.getById(compId) : null;
+            const dp = comp && comp.props.decimalPlaces !== undefined ? comp.props.decimalPlaces : 1;
+            el.textContent = parseFloat(data[src]).toFixed(dp);
+        }
+    });
+    // Update progress bar fills
+    document.querySelectorAll('.pb-fill[data-source]').forEach(el => {
+        const src = el.dataset.source;
+        if (data[src] !== undefined) {
+            const pct = Math.min(100, Math.max(0, parseFloat(data[src])));
+            el.style.width = pct + '%';
+        }
+    });
+    // Line graphs and circle meters: draw on canvas elements
+    document.querySelectorAll('.lg-canvas[data-source]').forEach(el => {
+        const src = el.dataset.source;
+        if (data[src] !== undefined) drawLineGraph(el, parseFloat(data[src]));
+    });
+    document.querySelectorAll('.cm-canvas[data-source]').forEach(el => {
+        const src = el.dataset.source;
+        if (data[src] !== undefined) drawCircleMeter(el, parseFloat(data[src]));
+    });
+}
+
+function formatClock(fmt, tz) {
+    const now = tz === 'local' ? new Date() : new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+    const h24 = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+    const h12 = h24 % 12 || 12;
+    const ampm = h24 < 12 ? 'AM' : 'PM';
+    const pad = n => String(n).padStart(2, '0');
+    return fmt
+        .replace('HH', pad(h24)).replace('mm', pad(m)).replace('ss', pad(s))
+        .replace('hh', pad(h12)).replace('A', ampm);
+}
+
+function drawLineGraph(canvasEl, value) {
+    const compEl = canvasEl.closest('.comp');
+    const compId = compEl && compEl.dataset.id;
+    const comp = compId ? store.getById(compId) : null;
+    if (!comp) return;
+    const maxPts = comp.props.maxPoints || 60;
+    if (!_lgHistory[compId]) _lgHistory[compId] = [];
+    const hist = _lgHistory[compId];
+    hist.push(value);
+    if (hist.length > maxPts) hist.shift();
+
+    const ctx = canvasEl.getContext('2d');
+    const w = canvasEl.width, h = canvasEl.height;
+    ctx.clearRect(0, 0, w, h);
+    if (hist.length < 2) return;
+
+    const max = Math.max(...hist, 1);
+    const pts = hist.map((v, i) => [i / (hist.length - 1) * w, h - (v / max) * (h - 2) - 1]);
+
+    ctx.strokeStyle = comp.props.lineColor || '#00bfff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+    ctx.stroke();
+
+    if (comp.props.fillColor) {
+        ctx.fillStyle = comp.props.fillColor;
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+        ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function drawCircleMeter(canvasEl, value) {
+    const compEl = canvasEl.closest('.comp');
+    const compId = compEl && compEl.dataset.id;
+    const comp = compId ? store.getById(compId) : null;
+    if (!comp) return;
+
+    const ctx = canvasEl.getContext('2d');
+    const w = canvasEl.width, h = canvasEl.height;
+    const cx = w / 2, cy = h / 2;
+    const r = Math.min(cx, cy) - (comp.props.strokeWidth || 6) / 2 - 2;
+    const startDeg = (comp.props.startAngle || -90) * Math.PI / 180;
+    const pct = Math.min(100, Math.max(0, value)) / 100;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Track
+    ctx.strokeStyle = comp.props.trackColor || '#1e1e1e';
+    ctx.lineWidth = comp.props.strokeWidth || 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // Fill
+    ctx.strokeStyle = comp.props.color || '#00bfff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startDeg, startDeg + pct * 2 * Math.PI);
+    ctx.stroke();
+
+    // Value label
+    if (comp.props.showValue) {
+        ctx.fillStyle = comp.props.valueColor || '#fff';
+        ctx.font = `${comp.props.fontSize || 14}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(Math.round(value) + '%', cx, cy);
+    }
 }
 
 // ── Stubs for later tasks ─────────────────────────────────────────────────────
@@ -492,6 +706,7 @@ for (const id of PANEL_IDS) {
 document.addEventListener('mousemove', onDragMove);
 document.addEventListener('mouseup',   onDragEnd);
 
+renderComponentsPanel();
 renderCanvas();
 
 // Push initial state to history so undo from state 1 works
