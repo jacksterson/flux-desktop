@@ -332,22 +332,22 @@ function renderComponentContent(el, comp) {
             el.innerHTML = `
                 ${p.label ? `<div style="font-size:10px;color:#888;font-family:monospace;">${escHtml(p.label)}</div>` : ''}
                 <div style="font-size:${p.fontSize}px;color:${p.color};font-family:${p.fontFamily};font-weight:bold;">
-                    <span class="live-value" data-source="${p.source}">--</span>${escHtml(p.suffix)}
+                    <span class="live-value" data-source="${escHtml(String(p.source))}">--</span>${escHtml(p.suffix)}
                 </div>`;
             break;
         case 'progressbar':
             el.style.background = p.bgColor;
             el.style.borderRadius = p.borderRadius + 'px';
-            el.innerHTML = `<div class="pb-fill" data-source="${p.source}" style="
+            el.innerHTML = `<div class="pb-fill" data-source="${escHtml(String(p.source))}" style="
                 height:100%; width:0%; background:${p.fgColor};
                 border-radius:${p.borderRadius}px; transition:width 0.3s;
             "></div>`;
             break;
         case 'linegraph':
-            el.innerHTML = `<canvas class="lg-canvas" data-source="${p.source}" width="${comp.width}" height="${comp.height}"></canvas>`;
+            el.innerHTML = `<canvas class="lg-canvas" data-source="${escHtml(String(p.source))}" width="${comp.width}" height="${comp.height}"></canvas>`;
             break;
         case 'circlemeter':
-            el.innerHTML = `<canvas class="cm-canvas" data-source="${p.source}" width="${comp.width}" height="${comp.height}"></canvas>`;
+            el.innerHTML = `<canvas class="cm-canvas" data-source="${escHtml(String(p.source))}" width="${comp.width}" height="${comp.height}"></canvas>`;
             break;
         case 'clock':
             el.style.display = 'flex';
