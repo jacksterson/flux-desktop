@@ -95,10 +95,51 @@ class ComponentStore {
     }
 }
 
+// ── HistoryStack ──────────────────────────────────────────────────────────────
+
+class HistoryStack {
+    constructor(maxStates = 50) {
+        this._stack = [];
+        this._ptr = -1;
+        this._max = maxStates;
+    }
+
+    push(snapshot) {
+        // Discard any redo states above the pointer
+        this._stack = this._stack.slice(0, this._ptr + 1);
+        this._stack.push(snapshot);
+        if (this._stack.length > this._max) {
+            this._stack.shift();
+        } else {
+            this._ptr++;
+        }
+    }
+
+    undo() {
+        if (this._ptr <= 0) return null;
+        this._ptr--;
+        return this._stack[this._ptr];
+    }
+
+    redo() {
+        if (this._ptr >= this._stack.length - 1) return null;
+        this._ptr++;
+        return this._stack[this._ptr];
+    }
+
+    canUndo() { return this._ptr > 0; }
+    canRedo() { return this._ptr < this._stack.length - 1; }
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const store = new ComponentStore();
 let activeId = null;
+const history = new HistoryStack();
+
+function pushHistory() {
+    history.push(store.serialize());
+}
 
 // Single drag/resize state object
 const _drag = { type: null, compId: null, ox: 0, oy: 0, startX: 0, startY: 0, startCompX: 0, startCompY: 0, startW: 0, startH: 0, handle: null };
@@ -136,6 +177,9 @@ function onDragMove(e) {
 }
 
 function onDragEnd() {
+    if (_drag.type) {
+        pushHistory();
+    }
     _drag.type = null;
 }
 
@@ -307,14 +351,43 @@ document.getElementById('canvas').addEventListener('mousedown', () => {
     renderLayers();
 });
 
-// ── Delete selected component ─────────────────────────────────────────────────
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
+    // Don't fire when typing in an input
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+    // Redo: Ctrl+Shift+Z
+    if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
+        e.preventDefault();
+        const snap = history.redo();
+        if (snap) {
+            store.deserialize(snap);
+            activeId = null;
+            renderCanvas();
+            renderLayers();
+        }
+        return;
+    }
+
+    // Undo: Ctrl+Z
+    if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        const snap = history.undo();
+        if (snap) {
+            store.deserialize(snap);
+            activeId = null;
+            renderCanvas();
+            renderLayers();
+        }
+        return;
+    }
+
+    // Delete: Delete or Backspace
     if ((e.key === 'Delete' || e.key === 'Backspace') && activeId) {
-        // Don't fire when typing in an input
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
         store.remove(activeId);
         activeId = null;
+        pushHistory();
         renderCanvas();
         renderLayers();
     }
@@ -420,3 +493,6 @@ document.addEventListener('mousemove', onDragMove);
 document.addEventListener('mouseup',   onDragEnd);
 
 renderCanvas();
+
+// Push initial state to history so undo from state 1 works
+pushHistory();
