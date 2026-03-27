@@ -1,8 +1,4 @@
 // Weather Module Logic (Vanilla JS for Protocol Compatibility)
-const { invoke } = window.__TAURI__.core;
-const { getCurrentWindow } = window.__TAURI__.window;
-
-const appWindow = getCurrentWindow();
 
 // --- Config State ---
 const DEFAULT_STATE = {
@@ -199,12 +195,13 @@ function updateCarouselMove() {
     });
 }
 
-window.addEventListener('storage', () => {
+function _handleStorage() {
     state = JSON.parse(localStorage.getItem("flux_weather_state")) || DEFAULT_STATE;
     applyState();
     initCarousel(); // Re-render for unit change
     initUI();
-});
+}
+window.addEventListener('storage', _handleStorage);
 
 function updateClock() {
     const now = new Date();
@@ -268,7 +265,7 @@ window.addEventListener("mousemove", (e) => {
 container.addEventListener("mousedown", (e) => {
   const target = e.target;
   if ((target.id === "main-container" || target.id === "spotlight" || target.closest("header")) && !target.classList.contains("resizer") && target.id !== "open-settings") {
-    appWindow.startDragging();
+    WidgetAPI.widget.drag(e);
   }
 });
 
@@ -276,15 +273,21 @@ document.querySelectorAll(".resizer").forEach(r => {
   r.onmousedown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const dir = r.dataset.direction;
-    if (dir) appWindow.startResizeDragging(dir);
+    if (dir) WidgetAPI.widget.resize(dir);
   };
 });
 
 const settingsBtn = document.getElementById("open-settings");
-if (settingsBtn) settingsBtn.onclick = () => invoke("open_module_settings", { id: "weather" });
+if (settingsBtn) settingsBtn.onclick = () => WidgetAPI.widget.openSettings();
 
 initCarousel();
 initUI();
 updateClock();
-setInterval(updateClock, 1000);
+const _clockInterval = setInterval(updateClock, 1000);
 startStaggeredCycling();
+
+function _cleanup() {
+  clearInterval(_clockInterval);
+  window.removeEventListener('storage', _handleStorage);
+}
+window._fluxCleanup = _cleanup;

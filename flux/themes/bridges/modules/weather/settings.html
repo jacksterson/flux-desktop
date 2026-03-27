@@ -188,10 +188,8 @@
         </div>
     </div>
 
+    <script src="flux-module://_flux/widget-api.js"></script>
     <script type="module">
-        const { invoke } = window.__TAURI__.core;
-        const { getCurrentWindow } = window.__TAURI__.window;
-        const appWindow = getCurrentWindow();
 
         const DEFAULT_STATE = {
             city: "Alamosa, CO",
@@ -239,19 +237,19 @@
 
         // Dragging
         document.getElementById("drag-header").onmousedown = (e) => {
-            if (e.target.id !== "close-btn") appWindow.startDragging();
+            if (e.target.id !== "close-btn") WidgetAPI.widget.drag(e);
         };
-        
+
         // Resizing
         document.querySelector(".resizer-rb").onmousedown = (e) => {
             e.preventDefault(); e.stopPropagation();
-            appWindow.startResizeDragging("SouthEast");
+            WidgetAPI.widget.resize("SouthEast");
         };
 
         const closeBtn = document.getElementById("close-btn");
-        closeBtn.onclick = async (e) => {
+        closeBtn.onclick = (e) => {
             e.stopPropagation();
-            await invoke("close_window");
+            WidgetAPI.widget.close();
         };
 
         syncUI();
