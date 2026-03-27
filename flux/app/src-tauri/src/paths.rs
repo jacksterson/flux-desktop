@@ -18,11 +18,34 @@ pub fn flux_skins_dir() -> PathBuf {
     flux_user_dir().join("skins")
 }
 
-/// Creates ~/Flux/modules and ~/Flux/skins if they do not exist.
+/// Returns the XDG data dir for Flux: ~/.local/share/flux on Linux/macOS,
+/// %LOCALAPPDATA%\flux on Windows.
+pub fn flux_user_data_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".local/share")
+        })
+        .join("flux")
+}
+
+/// Returns ~/.local/share/flux/themes — where user-installed theme packs live.
+pub fn flux_user_themes_dir() -> PathBuf {
+    flux_user_data_dir().join("themes")
+}
+
+/// Returns ~/.local/share/flux/config.toml — the engine config file.
+pub fn flux_config_path() -> PathBuf {
+    flux_user_data_dir().join("config.toml")
+}
+
+/// Creates ~/Flux/modules, ~/Flux/skins, and ~/.local/share/flux/themes if they do not exist.
 /// Called once at app startup.
 pub fn ensure_flux_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(flux_modules_dir())?;
     std::fs::create_dir_all(flux_skins_dir())?;
+    std::fs::create_dir_all(flux_user_themes_dir())?;
     Ok(())
 }
 
@@ -60,5 +83,18 @@ mod tests {
         ensure_flux_dirs().expect("ensure_flux_dirs should not fail");
         assert!(flux_modules_dir().exists(), "modules dir should exist after ensure_flux_dirs");
         assert!(flux_skins_dir().exists(), "skins dir should exist after ensure_flux_dirs");
+    }
+
+    #[test]
+    fn flux_user_themes_dir_is_under_local_share_flux() {
+        let result = flux_user_themes_dir();
+        assert!(result.ends_with("flux/themes") || result.ends_with("flux\\themes"),
+            "expected path to end with flux/themes, got {:?}", result);
+    }
+
+    #[test]
+    fn flux_config_path_ends_with_config_toml() {
+        let result = flux_config_path();
+        assert_eq!(result.file_name().unwrap(), "config.toml");
     }
 }

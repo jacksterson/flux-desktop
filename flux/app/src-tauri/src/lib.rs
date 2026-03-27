@@ -4,7 +4,7 @@ use config::{EngineConfig, read_config, write_config, config_exists};
 pub mod metrics;
 pub mod broadcaster;
 mod paths;
-use paths::{ensure_flux_dirs, flux_modules_dir, flux_user_dir};
+use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
