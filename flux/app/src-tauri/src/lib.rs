@@ -6,7 +6,7 @@ pub mod broadcaster;
 mod paths;
 mod archive;
 mod module_settings;
-use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir};
+use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
@@ -92,6 +92,7 @@ pub struct ModuleInfo {
     pub id: String,
     pub name: String,
     pub active: bool,
+    pub has_settings: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -283,6 +284,15 @@ fn get_module_name_from_dir(module_dir: &std::path::Path) -> String {
         })
 }
 
+fn get_module_has_settings(module_dir: &std::path::Path) -> bool {
+    let manifest_path = module_dir.join("module.json");
+    fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<ModuleManifest>(&s).ok())
+        .map(|m| !m.settings.is_empty())
+        .unwrap_or(false)
+}
+
 fn scan_theme_dir(
     themes_dir: &std::path::Path,
     source: &str,
@@ -308,10 +318,15 @@ fn scan_theme_dir(
             format!("flux-module://_theme/{}/{}", manifest.id, filename)
         });
         let modules_dir = theme_dir.join("modules");
-        let modules = manifest.modules.iter().map(|mid| ModuleInfo {
-            id: mid.clone(),
-            name: get_module_name_from_dir(&modules_dir.join(mid)),
-            active: active.contains_key(mid),
+        let modules = manifest.modules.iter().map(|mid| {
+            let module_dir = modules_dir.join(mid);
+            let has_settings = get_module_has_settings(&module_dir);
+            ModuleInfo {
+                id: mid.clone(),
+                name: get_module_name_from_dir(&module_dir),
+                active: active.contains_key(mid),
+                has_settings,
+            }
         }).collect();
         out.push(ThemeInfo {
             id: manifest.id,
@@ -344,6 +359,35 @@ fn find_theme_manifest(id: &str, resource_dir: &std::path::Path) -> Result<Theme
                else { return Err(format!("theme '{}' not found", id)); };
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn find_module_manifest(id: &str, resource_dir: &std::path::Path) -> Result<ModuleManifest, String> {
+    let user_path = flux_modules_dir().join(id).join("module.json");
+    if user_path.exists() {
+        let content = fs::read_to_string(&user_path).map_err(|e| e.to_string())?;
+        return serde_json::from_str(&content).map_err(|e| e.to_string());
+    }
+    let user_themes = flux_user_themes_dir();
+    if let Ok(entries) = fs::read_dir(&user_themes) {
+        for entry in entries.flatten() {
+            let p = entry.path().join("modules").join(id).join("module.json");
+            if p.exists() {
+                let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+                return serde_json::from_str(&content).map_err(|e| e.to_string());
+            }
+        }
+    }
+    let bundled = resource_dir.join("themes");
+    if let Ok(entries) = fs::read_dir(&bundled) {
+        for entry in entries.flatten() {
+            let p = entry.path().join("modules").join(id).join("module.json");
+            if p.exists() {
+                let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+                return serde_json::from_str(&content).map_err(|e| e.to_string());
+            }
+        }
+    }
+    Err(format!("module '{}' not found", id))
 }
 
 #[tauri::command]
@@ -532,6 +576,28 @@ fn wizard_escape(app: AppHandle, state: State<'_, AppState>, active_modules: Vec
 #[tauri::command]
 fn get_config(state: State<'_, AppState>) -> EngineConfig {
     state.config.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_module_settings_schema(app: AppHandle, module_id: String) -> Result<Vec<SettingDef>, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_module_manifest(&module_id, &resource_dir)?;
+    Ok(manifest.settings)
+}
+
+#[tauri::command]
+fn get_module_settings(app: AppHandle, module_id: String) -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_module_manifest(&module_id, &resource_dir)?;
+    let settings_file = flux_module_settings_dir().join(format!("{}.toml", module_id));
+    Ok(module_settings::read_settings(&settings_file, &manifest.settings))
+}
+
+#[tauri::command]
+fn set_module_setting(module_id: String, key: String, value: serde_json::Value) -> Result<(), String> {
+    let settings_file = flux_module_settings_dir().join(format!("{}.toml", module_id));
+    module_settings::write_setting(&settings_file, &key, &value)
+        .map_err(|e| e.to_string())
 }
 
 fn track_window(window: WebviewWindow) {
@@ -1101,6 +1167,7 @@ pub fn run() {
             list_themes,
             activate_theme, deactivate_theme,
             open_themes_folder, open_command_center, get_config,
+            get_module_settings_schema, get_module_settings, set_module_setting,
             install_theme_archive, pick_and_install_theme, uninstall_theme,
             open_wizard, wizard_launch, wizard_escape,
             metrics::system_cpu,
@@ -1384,6 +1451,18 @@ mod tests {
         assert_eq!(id, "test-theme");
         std::fs::remove_dir_all(&extract_dir).ok();
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn module_info_has_settings_field() {
+        let info = ModuleInfo {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            active: false,
+            has_settings: false,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("has_settings"), "ModuleInfo JSON should include has_settings");
     }
 
     #[test]
