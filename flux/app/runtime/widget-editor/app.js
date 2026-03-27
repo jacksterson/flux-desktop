@@ -1,3 +1,9 @@
+if (!window.__TAURI__) {
+  document.getElementById('canvas').innerHTML =
+    '<p style="padding:20px;color:#c00">Tauri IPC not available.</p>';
+  throw new Error('[WidgetEditor] window.__TAURI__ not available');
+}
+
 const { invoke } = window.__TAURI__.core;
 
 const canvas = document.getElementById('canvas');
