@@ -435,6 +435,20 @@ mod tests {
         assert!(json.contains("kernel"));
     }
 
+    #[test]
+    fn network_info_serializes() {
+        let info = NetworkInfo {
+            name: "eth0".to_string(),
+            received: 1024,
+            transmitted: 2048,
+            total_received: 1_000_000,
+            total_transmitted: 2_000_000,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("received"));
+        assert!(json.contains("total_received"));
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn disk_io_linux_returns_pair() {
