@@ -1,6 +1,6 @@
 {
   "id": "weather",
-  "name": "Weather Report",
+  "name": "Weather",
   "author": "Jack",
   "version": "1.0.0",
   "entry": "index.html",
