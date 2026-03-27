@@ -379,6 +379,22 @@ fn open_themes_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_command_center(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("command-center") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        Ok(())
+    } else {
+        build_command_center_window(&app)
+    }
+}
+
+#[tauri::command]
+fn get_config(state: State<'_, AppState>) -> EngineConfig {
+    state.config.lock().unwrap().clone()
+}
+
 fn track_window(window: WebviewWindow) {
     let app_handle = window.app_handle().clone();
     let label = window.label().to_string();
@@ -863,6 +879,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             drag_window, list_modules, toggle_module,
             open_module_settings, close_window, move_module,
+            is_layer_shell_window,
+            list_themes,
+            activate_theme, deactivate_theme,
+            open_themes_folder, open_command_center, get_config,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -872,7 +892,6 @@ pub fn run() {
             metrics::system_uptime,
             metrics::system_os,
             metrics::system_disk_io,
-            is_layer_shell_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
