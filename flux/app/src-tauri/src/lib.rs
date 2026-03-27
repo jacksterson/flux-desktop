@@ -595,6 +595,9 @@ fn get_module_settings(app: AppHandle, module_id: String) -> Result<std::collect
 
 #[tauri::command]
 fn set_module_setting(module_id: String, key: String, value: serde_json::Value) -> Result<(), String> {
+    if module_id.contains("..") || module_id.contains('/') || module_id.contains('\\') {
+        return Err("Invalid module_id".to_string());
+    }
     let settings_file = flux_module_settings_dir().join(format!("{}.toml", module_id));
     module_settings::write_setting(&settings_file, &key, &value)
         .map_err(|e| e.to_string())

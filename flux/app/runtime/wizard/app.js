@@ -130,7 +130,7 @@ function loadModuleList() {
     <div class="module-toggle-row">
       <span class="module-label">${escHtml(m.name || m.id)}</span>
       <label class="toggle">
-        <input type="checkbox" checked onchange="toggleModuleCheck('${escAttr(m.id)}', this.checked)">
+        <input type="checkbox" checked data-module-id="${escAttr(m.id)}" onchange="toggleModuleCheck('${escAttr(m.id)}', this.checked)">
         <span class="toggle-track"></span>
       </label>
     </div>
@@ -149,10 +149,9 @@ function updateStep3Button() {
 
 document.getElementById('btn-all').addEventListener('click', () => {
   selectedModules.clear();
-  document.querySelectorAll('#module-list .module-toggle-row input[type=checkbox]').forEach(cb => {
+  document.querySelectorAll('#module-list input[type=checkbox]').forEach(cb => {
     cb.checked = true;
-    const match = cb.getAttribute('onchange').match(/'([^']+)'/);
-    if (match) selectedModules.add(match[1]);
+    if (cb.dataset.moduleId) selectedModules.add(cb.dataset.moduleId);
   });
   updateStep3Button();
 });
