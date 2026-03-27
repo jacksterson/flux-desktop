@@ -255,3 +255,24 @@ input[type="checkbox"].prop-input {
 input[type="range"].prop-input {
     padding: 0;
 }
+
+/* ── Layers panel ───────────────────────────────────────────────────────── */
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #ccc;
+    user-select: none;
+}
+.layer-row:hover { background: #21262d; }
+.layer-row.active { background: #00bfff22; color: #fff; }
+.layer-row.drag-over { background: #00bfff44; }
+.layer-icon { width: 16px; text-align: center; flex-shrink: 0; }
+.layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-vis  { font-size: 12px; cursor: pointer; opacity: 0.6; flex-shrink: 0; }
+.layer-vis:hover { opacity: 1; }

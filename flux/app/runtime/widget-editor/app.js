@@ -366,8 +366,8 @@ function escHtml(s) {
 function selectComponent(id) {
     activeId = id;
     renderCanvas();
-    renderProperties(); // will be implemented in Task 8
-    renderLayers();     // will be implemented in Task 9
+    renderProperties();
+    renderLayers();
 }
 
 // ── Components panel ──────────────────────────────────────────────────────────
@@ -709,8 +709,81 @@ function renderProperties() {
     });
 }
 
+function reorderLayer(draggedId, targetId) {
+    const dragged = store.getById(draggedId);
+    const target  = store.getById(targetId);
+    if (!dragged || !target) return;
+    const tmp = dragged.zIndex;
+    store.update(draggedId, { zIndex: target.zIndex });
+    store.update(targetId,  { zIndex: tmp });
+    pushHistory();
+    renderCanvas();
+    renderLayers();
+}
+
 function renderLayers() {
-    // Implemented in Task 9
+    const list = document.getElementById('layers-list');
+    list.innerHTML = '';
+
+    // Reverse order: top of list = highest z-index
+    const comps = store.getAll().reverse();
+
+    comps.forEach((comp, listIndex) => {
+        const row = document.createElement('div');
+        row.className = 'layer-row' + (comp.id === activeId ? ' active' : '');
+        row.dataset.id = comp.id;
+        row.draggable = true;
+
+        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—' };
+        const icon = typeIcons[comp.type] || '?';
+        const label = comp.props.label || comp.props.content || comp.type;
+
+        row.innerHTML = `
+            <span class="layer-icon">${escHtml(String(icon))}</span>
+            <span class="layer-name">${escHtml(String(label))}</span>
+            <span class="layer-vis" data-id="${escHtml(comp.id)}" title="${comp.visible ? 'Hide' : 'Show'}">${comp.visible ? '👁' : '○'}</span>
+        `;
+
+        // Click row to select
+        row.addEventListener('click', e => {
+            if (e.target.classList.contains('layer-vis')) return;
+            selectComponent(comp.id);
+        });
+
+        // Visibility toggle
+        row.querySelector('.layer-vis').addEventListener('click', () => {
+            store.update(comp.id, { visible: !comp.visible });
+            pushHistory();
+            renderCanvas();
+            renderLayers();
+        });
+
+        // Drag-to-reorder
+        row.addEventListener('dragstart', e => {
+            e.dataTransfer.setData('text/plain', comp.id);
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        row.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            row.classList.add('drag-over');
+        });
+
+        row.addEventListener('dragleave', () => {
+            row.classList.remove('drag-over');
+        });
+
+        row.addEventListener('drop', e => {
+            e.preventDefault();
+            row.classList.remove('drag-over');
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if (draggedId === comp.id) return;
+            reorderLayer(draggedId, comp.id);
+        });
+
+        list.appendChild(row);
+    });
 }
 
 // ── Canvas size ───────────────────────────────────────────────────────────────
