@@ -397,6 +397,84 @@ fn open_themes_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Shared install logic: validate and move extracted archive to user themes dir.
+fn do_install_archive(path: &std::path::Path, resource_dir: &std::path::Path) -> Result<ThemeInfo, String> {
+    let extract_dir = archive::extract_to_temp(path)?;
+    let result = (|| -> Result<ThemeInfo, String> {
+        let (theme_id, _) = archive::validate_extracted(&extract_dir)?;
+        // Check for duplicate
+        let user_theme_dest = flux_user_themes_dir().join(&theme_id);
+        if user_theme_dest.exists() {
+            return Err(format!("Theme '{}' is already installed", theme_id));
+        }
+        // Move extracted dir to user themes
+        std::fs::rename(&extract_dir, &user_theme_dest)
+            .map_err(|e| format!("Could not install theme: {}", e))?;
+        // Read the manifest we just installed
+        find_theme_manifest(&theme_id, resource_dir)
+            .map(|m| ThemeInfo {
+                id: m.id,
+                name: m.name,
+                description: m.description,
+                version: m.version,
+                preview_url: m.preview.map(|f| format!("flux-module://_theme/{}/{}", theme_id, f)),
+                modules: vec![],
+                source: "user".to_string(),
+            })
+    })();
+    // Always clean up extract_dir if it still exists (rename failed or error before rename)
+    if extract_dir.exists() {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+    }
+    result
+}
+
+#[tauri::command]
+fn install_theme_archive(app: AppHandle, path: String) -> Result<ThemeInfo, String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    do_install_archive(std::path::Path::new(&path), &resource_dir)
+}
+
+#[tauri::command]
+fn pick_and_install_theme(app: AppHandle) -> Result<ThemeInfo, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app.dialog()
+        .file()
+        .add_filter("Theme Archive", &["zip", "7z", "gz", "tgz"])
+        .blocking_pick_file();
+    let file_path = picked
+        .ok_or_else(|| "cancelled".to_string())?
+        .into_path()
+        .map_err(|e| e.to_string())?;
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    do_install_archive(&file_path, &resource_dir)
+}
+
+#[tauri::command]
+fn uninstall_theme(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    // Deactivate theme first if any modules are active
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    if let Ok(manifest) = find_theme_manifest(&id, &resource_dir) {
+        let active_ids: Vec<String> = manifest.modules.iter()
+            .filter(|mid| state.active_modules.lock().unwrap().contains_key(*mid))
+            .cloned()
+            .collect();
+        if !active_ids.is_empty() {
+            for mid in &active_ids { close_module_window(mid, &app, &state); }
+            let mut cfg = state.config.lock().unwrap();
+            let active_set: std::collections::HashSet<&str> = active_ids.iter().map(|s| s.as_str()).collect();
+            cfg.engine.active_modules.retain(|m| !active_set.contains(m.as_str()));
+            write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+        }
+    }
+    // Remove theme directory
+    let theme_dir = flux_user_themes_dir().join(&id);
+    if !theme_dir.exists() {
+        return Err(format!("Theme '{}' is not installed", id));
+    }
+    std::fs::remove_dir_all(&theme_dir).map_err(|e| format!("Could not remove theme: {}", e))
+}
+
 #[tauri::command]
 fn open_command_center(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("command-center") {
@@ -1023,6 +1101,7 @@ pub fn run() {
             list_themes,
             activate_theme, deactivate_theme,
             open_themes_folder, open_command_center, get_config,
+            install_theme_archive, pick_and_install_theme, uninstall_theme,
             open_wizard, wizard_launch, wizard_escape,
             metrics::system_cpu,
             metrics::system_memory,
@@ -1283,6 +1362,28 @@ mod tests {
         assert_eq!(out.len(), 1, "duplicate theme ID should appear only once");
         assert_eq!(out[0].source, "user", "user theme should win over bundled");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn install_theme_archive_validates_zip_in_isolation() {
+        use archive::{extract_to_temp, validate_extracted};
+        use std::io::Write as _;
+
+        let tmp = std::env::temp_dir().join(format!("flux_install_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let zip_path = tmp.join("good.zip");
+        let f = std::fs::File::create(&zip_path).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let opts = zip::write::SimpleFileOptions::default();
+        z.start_file("theme.json", opts).unwrap();
+        z.write_all(br#"{"id":"test-theme","name":"Test","modules":[]}"#).unwrap();
+        z.finish().unwrap();
+
+        let extract_dir = extract_to_temp(&zip_path).unwrap();
+        let (id, _) = validate_extracted(&extract_dir).unwrap();
+        assert_eq!(id, "test-theme");
+        std::fs::remove_dir_all(&extract_dir).ok();
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
