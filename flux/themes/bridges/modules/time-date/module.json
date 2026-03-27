@@ -1,6 +1,6 @@
 {
   "id": "time-date",
-  "name": "Time & Chronometry",
+  "name": "Time & Date",
   "author": "Flux Core",
   "version": "1.0.0",
   "entry": "index.html",
