@@ -606,6 +606,9 @@ fn open_widget_editor(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn save_fluxwidget(path: String, json: String) -> Result<(), String> {
     let path = std::path::Path::new(&path);
+    if path.extension().and_then(|e| e.to_str()) != Some("fluxwidget") {
+        return Err("Path must have a .fluxwidget extension".to_string());
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -619,9 +622,15 @@ fn save_fluxwidget(path: String, json: String) -> Result<(), String> {
 
 #[tauri::command]
 fn load_fluxwidget(path: String) -> Result<String, String> {
+    let path = std::path::Path::new(&path);
+    if path.extension().and_then(|e| e.to_str()) != Some("fluxwidget") {
+        return Err("Path must have a .fluxwidget extension".to_string());
+    }
     std::fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
+// NOTE: ThemeInfo return type used as stub. Task 12 implementer should verify
+// whether a new return type is needed before binding the frontend to ThemeInfo fields.
 #[tauri::command]
 fn export_widget_package(
     _app: AppHandle,
