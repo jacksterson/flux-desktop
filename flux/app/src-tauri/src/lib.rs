@@ -409,6 +409,49 @@ fn open_command_center(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_wizard(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        Ok(())
+    } else {
+        build_wizard_window(&app)
+    }
+}
+
+#[tauri::command]
+fn wizard_launch(app: AppHandle, state: State<'_, AppState>, active_modules: Vec<String>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.active_modules = active_modules.clone();
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    for id in &active_modules {
+        if let Err(e) = launch_module_window(id, &app, &state) {
+            eprintln!("[flux] Warning: could not launch '{}' from wizard: {}", id, e);
+        }
+    }
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn wizard_escape(app: AppHandle, state: State<'_, AppState>, active_modules: Vec<String>) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.active_modules = active_modules;
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    open_command_center(app.clone())?;
+    if let Some(win) = app.get_webview_window("wizard") {
+        let _ = win.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn get_config(state: State<'_, AppState>) -> EngineConfig {
     state.config.lock().unwrap().clone()
 }
@@ -535,6 +578,23 @@ fn build_command_center_window(app: &AppHandle) -> Result<(), String> {
         .min_inner_size(800.0, 600.0)
         .decorations(true)
         .transparent(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn build_wizard_window(app: &AppHandle) -> Result<(), String> {
+    let url = WebviewUrl::CustomProtocol(
+        "flux-module://_flux/wizard/index.html".parse::<tauri::Url>()
+            .map_err(|e| e.to_string())?
+    );
+    WebviewWindowBuilder::new(app, "wizard", url)
+        .title("Welcome to Flux")
+        .inner_size(720.0, 520.0)
+        .min_inner_size(640.0, 480.0)
+        .decorations(true)
+        .transparent(false)
+        .resizable(true)
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -942,7 +1002,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             if is_first_run {
-                build_command_center_window(&handle)?;
+                build_wizard_window(&handle)?;
             } else {
                 let state = handle.state::<AppState>();
                 for id in &active_on_start {
@@ -955,6 +1015,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             drag_window, list_modules, toggle_module,
             open_module_settings, close_window, move_module,
@@ -962,6 +1023,7 @@ pub fn run() {
             list_themes,
             activate_theme, deactivate_theme,
             open_themes_folder, open_command_center, get_config,
+            open_wizard, wizard_launch, wizard_escape,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -1221,5 +1283,17 @@ mod tests {
         assert_eq!(out.len(), 1, "duplicate theme ID should appear only once");
         assert_eq!(out[0].source, "user", "user theme should win over bundled");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn wizard_launch_writes_config_and_active_modules() {
+        use config::{write_config, read_config, EngineConfig};
+        let tmp = std::env::temp_dir().join(format!("flux_wizard_test_{}.toml", std::process::id()));
+        let mut cfg = EngineConfig::default();
+        cfg.engine.active_modules = vec!["system-stats".to_string(), "time-date".to_string()];
+        write_config(&tmp, &cfg).unwrap();
+        let loaded = read_config(&tmp);
+        assert_eq!(loaded.engine.active_modules, vec!["system-stats", "time-date"]);
+        std::fs::remove_file(&tmp).ok();
     }
 }
