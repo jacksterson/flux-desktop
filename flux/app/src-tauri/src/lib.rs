@@ -418,7 +418,11 @@ pub fn run() {
                 let candidate = runtime_base.join(runtime_rel);
                 // Guard against path traversal
                 let file_path = if let Ok(canonical) = candidate.canonicalize() {
-                    if canonical.starts_with(&runtime_base.canonicalize().unwrap_or(runtime_base.clone())) {
+                    let canonical_base = runtime_base.canonicalize().unwrap_or_else(|e| {
+                        eprintln!("[flux] Warning: could not canonicalize runtime resource path: {e}");
+                        runtime_base.clone()
+                    });
+                    if canonical.starts_with(&canonical_base) {
                         canonical
                     } else {
                         return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();

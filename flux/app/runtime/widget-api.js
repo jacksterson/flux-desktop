@@ -10,6 +10,11 @@
 (function () {
   'use strict';
 
+  if (!window.__TAURI__) {
+    console.error('[WidgetAPI] window.__TAURI__ not available — ensure withGlobalTauri is enabled in tauri.conf.json');
+    return;
+  }
+
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
   const { getCurrentWindow } = window.__TAURI__.window;
@@ -18,6 +23,8 @@
   const windowLabel = appWindow.label;
 
   // --- Platform detection ---
+  // Platform detection — called once at load. Safe because drag() is always
+  // user-initiated and fires well after page load completes.
   // Cached at load time. Drag logic checks this at call time.
   let _isLayerShell = false;
   (async () => {
@@ -94,7 +101,7 @@
      */
     drag(mousedownEvent) {
       if (!_isLayerShell) {
-        appWindow.startDragging();
+        appWindow.startDragging().catch((e) => console.warn('[WidgetAPI] startDragging failed:', e));
         return;
       }
 
@@ -108,7 +115,7 @@
         lastX = e.screenX;
         lastY = e.screenY;
         if (dx !== 0 || dy !== 0) {
-          invoke('move_module', { id: windowLabel, dx, dy }).catch(() => {});
+          invoke('move_module', { id: windowLabel, dx, dy }).catch((e) => console.warn('[WidgetAPI] move_module failed:', e));
         }
       }
 
@@ -121,6 +128,8 @@
       window.addEventListener('mouseup', onMouseUp);
     },
 
+    // Note: startResizeDragging has no layer-shell equivalent — on Wayland compositor
+    // controls window geometry. If called on a layer-shell window it will silently no-op.
     /**
      * Start a resize drag in the given direction.
      *
