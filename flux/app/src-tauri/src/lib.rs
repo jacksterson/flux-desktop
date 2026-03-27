@@ -885,7 +885,14 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit"    => std::process::exit(0),
-                    "open_cc" => { let _ = build_command_center_window(app); }
+                    "open_cc" => {
+                        if let Some(win) = app.get_webview_window("command-center") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        } else {
+                            let _ = build_command_center_window(app);
+                        }
+                    }
                     "browse"  => {
                         let dir = flux_user_themes_dir();
                         let _ = std::fs::create_dir_all(&dir);
@@ -896,7 +903,13 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                        let _ = build_command_center_window(tray.app_handle());
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("command-center") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        } else {
+                            let _ = build_command_center_window(app);
+                        }
                     }
                 });
             if let Some(icon) = app.default_window_icon() {
