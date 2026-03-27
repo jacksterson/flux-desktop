@@ -19,6 +19,15 @@ pub fn start(app: AppHandle) {
         let mut prev_disk: (u64, u64, Instant) = (0, 0, Instant::now());
         let mut slow_tick: u32 = 0;
 
+        // Emit OS info once at startup
+        let os_payload = serde_json::json!({
+            "name":    System::name().unwrap_or_default(),
+            "version": System::os_version().unwrap_or_default(),
+            "kernel":  System::kernel_version().unwrap_or_default(),
+            "arch":    System::cpu_arch(),
+        });
+        let _ = app.emit("system:os", &os_payload);
+
         loop {
             let tick_start = Instant::now();
 
