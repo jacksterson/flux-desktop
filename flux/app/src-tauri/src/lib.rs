@@ -318,6 +318,67 @@ fn list_themes(state: State<'_, AppState>, app: AppHandle) -> Vec<ThemeInfo> {
     themes
 }
 
+fn find_theme_manifest(id: &str, resource_dir: &std::path::Path) -> Result<ThemeManifest, String> {
+    let user_path = flux_user_themes_dir().join(id).join("theme.json");
+    let bundled_path = resource_dir.join("themes").join(id).join("theme.json");
+    let path = if user_path.exists() { user_path }
+               else if bundled_path.exists() { bundled_path }
+               else { return Err(format!("theme '{}' not found", id)); };
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn activate_theme(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_theme_manifest(&id, &resource_dir)?;
+    let mut activated: Vec<String> = Vec::new();
+    for mid in &manifest.modules {
+        let already = state.active_modules.lock().unwrap().contains_key(mid);
+        if !already {
+            launch_module_window(mid, &app, &state)?;
+            activated.push(mid.clone());
+        }
+    }
+    if !activated.is_empty() {
+        let mut cfg = state.config.lock().unwrap();
+        for mid in &activated {
+            if !cfg.engine.active_modules.contains(mid) {
+                cfg.engine.active_modules.push(mid.clone());
+            }
+        }
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn deactivate_theme(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let manifest = find_theme_manifest(&id, &resource_dir)?;
+    let to_close: Vec<String> = manifest.modules.into_iter()
+        .filter(|mid| state.active_modules.lock().unwrap().contains_key(mid))
+        .collect();
+    for mid in &to_close { close_module_window(mid, &app, &state); }
+    if !to_close.is_empty() {
+        let ids: HashSet<String> = to_close.into_iter().collect();
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.active_modules.retain(|m| !ids.contains(m));
+        write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_themes_folder(app: AppHandle) -> Result<(), String> {
+    let dir = flux_user_themes_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(dir.to_str().unwrap_or("."), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 fn track_window(window: WebviewWindow) {
     let app_handle = window.app_handle().clone();
     let label = window.label().to_string();
