@@ -262,6 +262,7 @@ pub fn system_gpu(state: State<'_, AppState>) -> Option<GpuInfo> {
     // AMD via sysfs (Linux only)
     #[cfg(target_os = "linux")]
     {
+        // On-demand pull command — Components allocation per-call is acceptable here (not a hot path).
         let mut components = Components::new();
         components.refresh(true);
         let gpu_temp = components.iter()
