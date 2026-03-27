@@ -11,23 +11,6 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "Flux",
-        "width": 400,
-        "height": 600,
-        "minWidth": 280,
-        "minHeight": 450,
-        "resizable": true,
-        "fullscreen": false,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": false,
-        "shadow": false,
-        "skipTaskbar": true
-      }
-    ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: flux-module:; connect-src ipc: http://ipc.localhost flux-module:"
     }

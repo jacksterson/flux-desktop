@@ -125,7 +125,7 @@ impl PersistentState {
 }
 
 // --- Engine State ---
-// Lock order (to prevent deadlock): active_modules → desktop_wayland_windows → persistent
+// Lock order: active_modules → desktop_wayland_windows → persistent → config
 pub struct AppState {
     pub sys: Mutex<System>,
     pub nvml: Option<Nvml>,
@@ -135,8 +135,9 @@ pub struct AppState {
     pub persistent: Mutex<PersistentState>,
     pub data_dir: PathBuf,
     /// IDs of windows that have Wayland layer shell applied.
-    /// Used to guard track_window and drag_window.
     pub desktop_wayland_windows: Mutex<HashSet<String>>,
+    pub config: Mutex<EngineConfig>,
+    pub config_path: PathBuf,
 }
 
 // --- Commands ---
@@ -246,101 +247,119 @@ fn track_window(window: WebviewWindow) {
     });
 }
 
+/// Open a module window. Does NOT update config — caller is responsible.
+fn launch_module_window(id: &str, app: &AppHandle, state: &AppState) -> Result<(), String> {
+    let resource_dir = app.path().resource_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    let user_manifest = flux_modules_dir().join(id).join("module.json");
+    let manifest_path = if user_manifest.exists() {
+        user_manifest
+    } else {
+        let themes_dir = resource_dir.join("themes");
+        let user_themes_dir = flux_user_themes_dir();
+        let found = std::fs::read_dir(&user_themes_dir).ok()
+            .and_then(|entries| entries.flatten().find_map(|e| {
+                let p = e.path().join("modules").join(id).join("module.json");
+                if p.exists() { Some(p) } else { None }
+            }));
+        let found = found.or_else(|| {
+            std::fs::read_dir(&themes_dir).ok()
+                .and_then(|entries| entries.flatten().find_map(|e| {
+                    let p = e.path().join("modules").join(id).join("module.json");
+                    if p.exists() { Some(p) } else { None }
+                }))
+        });
+        found.ok_or_else(|| format!("module '{}' not found in any theme", id))?
+    };
+
+    let content = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("cannot read manifest for '{}': {}", id, e))?;
+    let manifest = serde_json::from_str::<ModuleManifest>(&content)
+        .map_err(|e| format!("cannot parse manifest for '{}': {}", id, e))?;
+    if manifest.id != id {
+        return Err(format!("manifest id '{}' does not match requested id '{}'", manifest.id, id));
+    }
+
+    let win_config = &manifest.window;
+    let url = WebviewUrl::CustomProtocol(
+        format!("flux-module://{}/{}", id, manifest.entry).parse::<tauri::Url>()
+            .map_err(|e| e.to_string())?
+    );
+    let saved = state.persistent.lock().unwrap().windows.get(id).cloned();
+    let always_on_top = win_config.window_level == WindowLevel::Top;
+
+    let mut builder = WebviewWindowBuilder::new(app, id, url)
+        .title(&manifest.name)
+        .transparent(win_config.transparent)
+        .decorations(win_config.decorations)
+        .always_on_top(always_on_top)
+        .resizable(win_config.resizable)
+        .skip_taskbar(true)
+        .shadow(false);
+
+    if let Some(b) = &saved {
+        builder = builder.position(b.x, b.y).inner_size(b.width, b.height);
+    } else {
+        builder = builder.inner_size(win_config.width, win_config.height);
+    }
+
+    let window = builder.build().map_err(|e| e.to_string())?;
+    if let Some(b) = &saved {
+        let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
+        let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+    }
+
+    let saved_margins = state.persistent.lock().unwrap()
+        .margins.get(id).map(|m| (m.left, m.top));
+    let is_wayland_desktop = desktop_layer::apply(&window, &win_config.window_level, saved_margins);
+    if is_wayland_desktop {
+        state.desktop_wayland_windows.lock().unwrap().insert(id.to_string());
+    }
+    track_window(window);
+    state.active_modules.lock().unwrap().insert(id.to_string(), manifest);
+    Ok(())
+}
+
+/// Close a module window and remove from active state. Does NOT update config.
+fn close_module_window(id: &str, app: &AppHandle, state: &AppState) {
+    state.active_modules.lock().unwrap().remove(id);
+    state.desktop_wayland_windows.lock().unwrap().remove(id);
+    if let Some(win) = app.get_webview_window(id) { let _ = win.close(); }
+    if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
+}
+
+fn build_command_center_window(app: &AppHandle) -> Result<(), String> {
+    let url = WebviewUrl::CustomProtocol(
+        "flux-module://_flux/command-center/index.html".parse::<tauri::Url>()
+            .map_err(|e| e.to_string())?
+    );
+    WebviewWindowBuilder::new(app, "command-center", url)
+        .title("Flux")
+        .inner_size(960.0, 680.0)
+        .min_inner_size(800.0, 600.0)
+        .decorations(true)
+        .transparent(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let mut active_map = state.active_modules.lock().unwrap();
-    if let Some(_existing) = active_map.remove(&id) {
-        if let Some(win) = app.get_webview_window(&id) { let _ = win.close(); }
-        if let Some(win) = app.get_webview_window(&format!("{}-settings", id)) { let _ = win.close(); }
-        state.desktop_wayland_windows.lock().unwrap().remove(&id);
+    let is_active = state.active_modules.lock().unwrap().contains_key(&id);
+    if is_active {
+        close_module_window(&id, &app, &state);
     } else {
-        let user_manifest = flux_modules_dir().join(&id).join("module.json");
-        let resource_dir = app.path().resource_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
-
-        // Resolution order: user > themes packs > legacy flat bundled
-        let manifest_path = if user_manifest.exists() {
-            user_manifest
-        } else {
-            // Search themes/*/modules/<id>/module.json
-            let themes_dir = resource_dir.join("themes");
-            let theme_manifest = if themes_dir.exists() {
-                std::fs::read_dir(&themes_dir)
-                    .ok()
-                    .and_then(|entries| {
-                        entries.flatten().find_map(|entry| {
-                            let p = entry.path().join("modules").join(&id).join("module.json");
-                            if p.exists() { Some(p) } else { None }
-                        })
-                    })
-            } else {
-                None
-            };
-            theme_manifest.unwrap_or_else(|| {
-                resource_dir.join("modules").join(&id).join("module.json")
-            })
-        };
-
-        if let Ok(content) = fs::read_to_string(&manifest_path) {
-            if let Ok(manifest) = serde_json::from_str::<ModuleManifest>(&content) {
-                // Fix 3: validate manifest id matches the requested id
-                if manifest.id != id {
-                    eprintln!("[flux] Warning: manifest id '{}' does not match requested id '{}', skipping",
-                        manifest.id, id);
-                    return Err(format!("module manifest id '{}' does not match requested id '{}'", manifest.id, id));
-                }
-                let win_config = &manifest.window;
-                let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/{}", id, manifest.entry).parse().unwrap());
-                
-                let saved = {
-                    let p = state.persistent.lock().unwrap();
-                    p.windows.get(&id).cloned()
-                };
-
-                let always_on_top = win_config.window_level == WindowLevel::Top;
-
-                let mut builder = WebviewWindowBuilder::new(&app, &id, url)
-                    .title(&manifest.name)
-                    .transparent(win_config.transparent)
-                    .decorations(win_config.decorations)
-                    .always_on_top(always_on_top)
-                    .resizable(win_config.resizable)
-                    .skip_taskbar(true)
-                    .shadow(false);
-
-                if let Some(b) = &saved {
-                    builder = builder
-                        .position(b.x, b.y)
-                        .inner_size(b.width, b.height);
-                } else {
-                    builder = builder.inner_size(win_config.width, win_config.height);
-                }
-
-                let window = builder.build().map_err(|e| e.to_string())?;
-
-                // Force physical restore if saved
-                if let Some(b) = &saved {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
-                    let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
-                }
-                
-                let saved_margins = {
-                    let p = state.persistent.lock().unwrap();
-                    p.margins.get(&id).map(|m| (m.left, m.top))
-                };
-
-                // apply() borrows &window, so it must come before track_window()
-                // which takes ownership. No clone needed this way.
-                let is_wayland_desktop = desktop_layer::apply(&window, &win_config.window_level, saved_margins);
-                if is_wayland_desktop {
-                    state.desktop_wayland_windows.lock().unwrap().insert(id.clone());
-                }
-                track_window(window);
-                active_map.insert(id.clone(), manifest.clone());
-            }
-        }
+        launch_module_window(&id, &app, &state)?;
     }
-    Ok(())
+    let mut cfg = state.config.lock().unwrap();
+    if is_active {
+        cfg.engine.active_modules.retain(|m| m != &id);
+    } else if !cfg.engine.active_modules.contains(&id) {
+        cfg.engine.active_modules.push(id.clone());
+    }
+    write_config(&state.config_path, &cfg).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -601,40 +620,23 @@ pub fn run() {
         .setup(|app| {
             let nvml = Nvml::init().ok();
 
-            // Resolve data directory
-            let data_dir = app.path().app_data_dir()
-                .unwrap_or_else(|e| {
-                    eprintln!("Warning: could not resolve app data dir ({}), using current directory", e);
-                    PathBuf::from(".")
-                });
+            let data_dir = app.path().app_data_dir().unwrap_or_else(|e| {
+                eprintln!("Warning: could not resolve app data dir ({}), using current directory", e);
+                PathBuf::from(".")
+            });
 
-            // Create ~/Flux/modules and ~/Flux/skins if needed
             if let Err(e) = ensure_flux_dirs() {
                 eprintln!("Warning: could not create Flux directories: {}", e);
             }
 
-            // Load persistent state
             let state_path = data_dir.join("window_state.json");
             let persistent = PersistentState::load(&state_path);
 
-            // Restore main window position
-            if let Some(main_win) = app.get_webview_window("main") {
-                // On Wayland, xdg_toplevel position is compositor-managed and set_position
-                // is queued/deferred. Restoring here causes the window to jump later (when
-                // the event loop drains the queue), which also triggers spurious moves on
-                // other windows. Only restore on X11 where set_position is synchronous.
-                #[cfg(target_os = "linux")]
-                let should_restore = std::env::var("WAYLAND_DISPLAY").is_err();
-                #[cfg(not(target_os = "linux"))]
-                let should_restore = true;
-                if should_restore {
-                    if let Some(b) = persistent.windows.get("main") {
-                        let _ = main_win.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
-                        let _ = main_win.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
-                    }
-                }
-                track_window(main_win);
-            }
+            let config_path = flux_config_path();
+            let is_first_run = !config_exists(&config_path);
+            let engine_config = read_config(&config_path);
+            let interval_ms = engine_config.engine.broadcast_interval_ms;
+            let active_on_start: Vec<String> = engine_config.engine.active_modules.clone();
 
             app.manage(AppState {
                 sys: Mutex::new(System::new_all()),
@@ -645,30 +647,34 @@ pub fn run() {
                 persistent: Mutex::new(persistent),
                 data_dir,
                 desktop_wayland_windows: Mutex::new(HashSet::new()),
+                config: Mutex::new(engine_config),
+                config_path: config_path.clone(),
             });
 
             // System tray
-            let quit_i = MenuItem::with_id(app, "quit", "Quit Flux", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show Command Center", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            use tauri::menu::PredefinedMenuItem;
+            let open_i   = MenuItem::with_id(app, "open_cc", "Open Command Center",  true, None::<&str>)?;
+            let browse_i = MenuItem::with_id(app, "browse",  "Browse Themes Folder", true, None::<&str>)?;
+            let sep      = PredefinedMenuItem::separator(app)?;
+            let quit_i   = MenuItem::with_id(app, "quit",    "Quit Flux",            true, None::<&str>)?;
+            let menu     = Menu::with_items(app, &[&open_i, &browse_i, &sep, &quit_i])?;
+
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => std::process::exit(0),
-                    "show" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
+                    "quit"    => std::process::exit(0),
+                    "open_cc" => { let _ = build_command_center_window(app); }
+                    "browse"  => {
+                        let dir = flux_user_themes_dir();
+                        let _ = std::fs::create_dir_all(&dir);
+                        use tauri_plugin_opener::OpenerExt;
+                        let _ = app.opener().open_path(dir.to_str().unwrap_or("."), None::<&str>);
                     }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                        if let Some(win) = tray.app_handle().get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
+                        let _ = build_command_center_window(tray.app_handle());
                     }
                 });
             if let Some(icon) = app.default_window_icon() {
@@ -676,7 +682,19 @@ pub fn run() {
             }
             tray_builder.build(app)?;
 
-            broadcaster::start(app.handle().clone(), 2000);
+            broadcaster::start(app.handle().clone(), interval_ms);
+
+            let handle = app.handle().clone();
+            if is_first_run {
+                build_command_center_window(&handle)?;
+            } else {
+                let state = handle.state::<AppState>();
+                for id in &active_on_start {
+                    if let Err(e) = launch_module_window(id, &handle, &state) {
+                        eprintln!("[flux] Warning: could not launch '{}' on startup: {}", id, e);
+                    }
+                }
+            }
 
             Ok(())
         })
