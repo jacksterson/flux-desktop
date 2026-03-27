@@ -245,9 +245,6 @@ fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifes
         }
     }
 
-    // 3. Legacy flat bundled path (resource_dir/modules/) — backwards compat, removed in Phase 1
-    scan_modules_dir(&resource_dir.join("modules"), &active_ids, &mut seen_ids, &mut modules);
-
     modules
 }
 
@@ -718,6 +715,32 @@ pub fn run() {
                 };
             }
 
+            // _theme/<theme-id>/<file> serves assets from the theme's root directory
+            if let Some(theme_rel) = path_part.strip_prefix("_theme/") {
+                let resource_dir = ctx.app_handle().path().resource_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."));
+                let mut parts = theme_rel.splitn(2, '/');
+                let theme_id = parts.next().unwrap_or("");
+                let file_rel  = parts.next().unwrap_or("");
+                let user_base = flux_user_themes_dir().join(theme_id);
+                let bundled_base = resource_dir.join("themes").join(theme_id);
+                let theme_base = if user_base.exists() { user_base } else { bundled_base };
+                let candidate = theme_base.join(file_rel);
+                if let Ok(canonical) = candidate.canonicalize() {
+                    let base_canonical = theme_base.canonicalize().unwrap_or(theme_base.clone());
+                    if canonical.starts_with(&base_canonical) {
+                        if let Ok(content) = fs::read(&canonical) {
+                            let ext = canonical.extension()
+                                .and_then(|e| e.to_str()).unwrap_or("");
+                            return tauri::http::Response::builder()
+                                .header("Content-Type", mime_for_ext(ext))
+                                .body(content).unwrap();
+                        }
+                    }
+                }
+                return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+            }
+
             // Resolve candidate paths
             let user_base = flux_modules_dir();
             let user_candidate = user_base.join(path_part);
@@ -765,29 +788,38 @@ pub fn run() {
                     None
                 };
 
-                if let Some(canonical) = theme_canonical {
-                    canonical
-                } else {
-                    // Legacy flat bundled path
-                    let bundled_base = resource_dir.join("modules");
-                    let bundled_candidate = bundled_base.join(path_part);
-                    if let Ok(canonical) = bundled_candidate.canonicalize() {
-                        if canonical.starts_with(&bundled_base.canonicalize().unwrap_or(bundled_base.clone())) {
-                            canonical
-                        } else {
-                            return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
-                        }
-                    } else {
-                        return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
-                    }
-                }
+                let Some(canonical) = theme_canonical else {
+                    return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+                };
+                canonical
             };
 
+            let filename = file_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            if filename == "index.html" {
+                if let Ok(html) = fs::read_to_string(&file_path) {
+                    let tag = "<script src=\"flux-module://_flux/widget-api.js\"></script>";
+                    let injected = if let Some(i) = html.find("</head>") {
+                        format!("{}{}{}", &html[..i], tag, &html[i..])
+                    } else if let Some(i) = html.find("<body") {
+                        format!("{}{}{}", &html[..i], tag, &html[i..])
+                    } else {
+                        format!("{}{}", tag, html)
+                    };
+                    return tauri::http::Response::builder()
+                        .header("Content-Type", "text/html")
+                        .body(injected.into_bytes())
+                        .unwrap();
+                }
+            }
+
             if let Ok(content) = fs::read(&file_path) {
-                let ext = file_path.extension().map_or("", |e: &std::ffi::OsStr| e.to_str().unwrap_or(""));
-                let mime = mime_for_ext(ext);
+                let ext = file_path.extension()
+                    .and_then(|e: &std::ffi::OsStr| e.to_str()).unwrap_or("");
                 tauri::http::Response::builder()
-                    .header("Content-Type", mime)
+                    .header("Content-Type", mime_for_ext(ext))
                     .body(content)
                     .unwrap()
             } else {
