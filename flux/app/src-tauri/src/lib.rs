@@ -16,6 +16,20 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+// --- MIME helper ---
+fn mime_for_ext(ext: &str) -> &'static str {
+    match ext {
+        "html" => "text/html",
+        "js" => "application/javascript",
+        "css" => "text/css",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    }
+}
+
 // --- Discovery Types ---
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -137,11 +151,27 @@ fn scan_modules_dir(
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                if let Ok(content) = fs::read_to_string(path.join("module.json")) {
-                    if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
-                        if seen_ids.insert(manifest.id.clone()) {
-                            manifest.active = active_ids.contains(&manifest.id);
-                            modules.push(manifest);
+                let manifest_path = path.join("module.json");
+                if let Ok(content) = fs::read_to_string(&manifest_path) {
+                    match serde_json::from_str::<ModuleManifest>(&content) {
+                        Ok(mut manifest) => {
+                            // Fix 3: validate manifest id matches directory name
+                            let dir_name = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("");
+                            if manifest.id != dir_name {
+                                eprintln!("[flux] Warning: module at {} has id '{}' but directory is '{}', skipping",
+                                    path.display(), manifest.id, dir_name);
+                                continue;
+                            }
+                            if seen_ids.insert(manifest.id.clone()) {
+                                manifest.active = active_ids.contains(&manifest.id);
+                                modules.push(manifest);
+                            }
+                        }
+                        Err(e) => {
+                            // Fix 2: log malformed manifests
+                            eprintln!("[flux] Warning: could not parse manifest at {}: {e}", manifest_path.display());
                         }
                     }
                 }
@@ -251,6 +281,12 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
 
         if let Ok(content) = fs::read_to_string(&manifest_path) {
             if let Ok(manifest) = serde_json::from_str::<ModuleManifest>(&content) {
+                // Fix 3: validate manifest id matches the requested id
+                if manifest.id != id {
+                    eprintln!("[flux] Warning: manifest id '{}' does not match requested id '{}', skipping",
+                        manifest.id, id);
+                    return Err(format!("module manifest id '{}' does not match requested id '{}'", manifest.id, id));
+                }
                 let win_config = &manifest.window;
                 let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/{}", id, manifest.entry).parse().unwrap());
                 
@@ -474,16 +510,7 @@ pub fn run() {
                 };
                 return if let Ok(content) = fs::read(&file_path) {
                     let ext = file_path.extension().map_or("", |e: &std::ffi::OsStr| e.to_str().unwrap_or(""));
-                    let mime = match ext {
-                        "html" => "text/html",
-                        "js" => "application/javascript",
-                        "css" => "text/css",
-                        "svg" => "image/svg+xml",
-                        "png" => "image/png",
-                        "jpg" | "jpeg" => "image/jpeg",
-                        "json" => "application/json",
-                        _ => "application/octet-stream",
-                    };
+                    let mime = mime_for_ext(ext);
                     tauri::http::Response::builder()
                         .header("Content-Type", mime)
                         .body(content)
@@ -513,6 +540,9 @@ pub fn run() {
                 // Try themes/*/modules/<path_part>
                 let themes_dir = resource_dir.join("themes");
                 let theme_canonical = if themes_dir.exists() {
+                    // Fix 1: canonicalize themes_dir once for symlink escape prevention
+                    let themes_base_canonical = themes_dir.canonicalize()
+                        .unwrap_or_else(|_| themes_dir.clone());
                     std::fs::read_dir(&themes_dir)
                         .ok()
                         .and_then(|entries| {
@@ -522,7 +552,8 @@ pub fn run() {
                                 if let Ok(canonical) = candidate.canonicalize() {
                                     let base_canonical = theme_modules_base.canonicalize()
                                         .unwrap_or(theme_modules_base.clone());
-                                    if canonical.starts_with(&base_canonical) {
+                                    // Fix 1: also verify path stays within themes_dir
+                                    if canonical.starts_with(&base_canonical) && canonical.starts_with(&themes_base_canonical) {
                                         Some(canonical)
                                     } else {
                                         None
@@ -556,16 +587,7 @@ pub fn run() {
 
             if let Ok(content) = fs::read(&file_path) {
                 let ext = file_path.extension().map_or("", |e: &std::ffi::OsStr| e.to_str().unwrap_or(""));
-                let mime = match ext {
-                    "html" => "text/html",
-                    "js" => "application/javascript",
-                    "css" => "text/css",
-                    "svg" => "image/svg+xml",
-                    "png" => "image/png",
-                    "jpg" | "jpeg" => "image/jpeg",
-                    "json" => "application/json",
-                    _ => "application/octet-stream",
-                };
+                let mime = mime_for_ext(ext);
                 tauri::http::Response::builder()
                     .header("Content-Type", mime)
                     .body(content)
@@ -816,6 +838,57 @@ mod tests {
         assert!(info.write.is_none());
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("null"));
+    }
+
+    #[test]
+    fn scan_modules_dir_deduplicates() {
+        use std::fs;
+
+        // Create two separate theme dirs, each containing the same module id
+        let base = temp_dir().join(format!("flux_test_dedup_{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+        let theme1_modules = base.join("theme1").join("modules").join("my-module");
+        let theme2_modules = base.join("theme2").join("modules").join("my-module");
+        fs::create_dir_all(&theme1_modules).unwrap();
+        fs::create_dir_all(&theme2_modules).unwrap();
+
+        let manifest_json = r#"{
+            "id": "my-module",
+            "name": "Test",
+            "author": "tester",
+            "version": "1.0.0",
+            "entry": "index.html",
+            "window": {
+                "width": 400, "height": 300,
+                "transparent": false, "decorations": true,
+                "windowLevel": "desktop", "resizable": false
+            },
+            "permissions": []
+        }"#;
+        fs::write(theme1_modules.join("module.json"), manifest_json).unwrap();
+        fs::write(theme2_modules.join("module.json"), manifest_json).unwrap();
+
+        let active_ids = std::collections::HashSet::new();
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut modules = Vec::new();
+
+        scan_modules_dir(
+            &base.join("theme1").join("modules"),
+            &active_ids,
+            &mut seen_ids,
+            &mut modules,
+        );
+        scan_modules_dir(
+            &base.join("theme2").join("modules"),
+            &active_ids,
+            &mut seen_ids,
+            &mut modules,
+        );
+
+        assert_eq!(modules.len(), 1, "module should appear exactly once despite being in two theme dirs");
+        assert_eq!(modules[0].id, "my-module");
+
+        fs::remove_dir_all(&base).ok();
     }
 
     #[test]
