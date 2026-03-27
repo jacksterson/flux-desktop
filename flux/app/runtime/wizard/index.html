@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Flux</title>
+  <link rel="stylesheet" href="flux-module://_flux/wizard/style.css">
+</head>
+<body>
+  <div class="wizard-shell">
+    <div class="progress-bar">
+      <div class="progress-step active" data-step="1">1</div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="2">2</div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="3">3</div>
+      <div class="progress-line"></div>
+      <div class="progress-step" data-step="4">4</div>
+    </div>
+
+    <!-- Step 1: Welcome -->
+    <div class="step-pane active" id="step-1">
+      <div class="step-content center">
+        <div class="logo">Flux</div>
+        <p class="tagline">Your desktop, your widgets.</p>
+        <p class="step-desc">Install and manage widget themes directly from your desktop.</p>
+        <button class="btn-primary" id="btn-start">Get Started →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Choose theme -->
+    <div class="step-pane" id="step-2">
+      <div class="step-header">
+        <h2>Choose a theme</h2>
+        <p class="step-desc">A theme is a collection of widgets with a shared style.</p>
+      </div>
+      <div class="step-body" id="theme-grid">
+        <p class="loading">Loading themes…</p>
+      </div>
+      <div class="step-footer">
+        <button class="btn-ghost" id="btn-skip-theme">Skip →</button>
+        <button class="btn-primary" id="btn-next-2" disabled>Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Pick modules -->
+    <div class="step-pane" id="step-3">
+      <div class="step-header">
+        <h2>Pick your modules</h2>
+        <p class="step-desc">Choose which widgets to start. All are on by default.</p>
+        <div class="module-shortcuts">
+          <button class="btn-link" id="btn-all">Select all</button>
+          <span class="sep">·</span>
+          <button class="btn-link" id="btn-none">None</button>
+        </div>
+      </div>
+      <div class="step-body" id="module-list"></div>
+      <div class="step-footer">
+        <button class="btn-secondary" id="btn-back-3">← Back</button>
+        <button class="btn-primary" id="btn-next-3" disabled>Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Launch -->
+    <div class="step-pane" id="step-4">
+      <div class="step-content center">
+        <div class="launch-summary" id="launch-summary">Starting 0 modules</div>
+        <button class="btn-launch" id="btn-launch">Launch Flux</button>
+        <button class="btn-secondary" id="btn-back-4">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="flux-module://_flux/wizard/app.js"></script>
+</body>
+</html>
