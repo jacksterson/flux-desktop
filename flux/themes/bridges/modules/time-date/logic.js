@@ -1,8 +1,4 @@
 // Time & Date Module Logic
-const { invoke } = window.__TAURI__.core;
-const { getCurrentWindow } = window.__TAURI__.window;
-
-const appWindow = getCurrentWindow();
 
 // --- Config State ---
 const DEFAULT_STATE = {
@@ -95,7 +91,7 @@ window.addEventListener("mousemove", (e) => {
 container.addEventListener("mousedown", (e) => {
   const target = e.target;
   if ((target.id === "main-container" || target.id === "spotlight" || target.closest("header")) && !target.classList.contains("resizer") && target.id !== "open-settings") {
-    appWindow.startDragging();
+    WidgetAPI.widget.drag(e);
   }
 });
 
@@ -103,13 +99,13 @@ document.querySelectorAll(".resizer").forEach(r => {
   r.onmousedown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const dir = r.dataset.direction;
-    if (dir) appWindow.startResizeDragging(dir);
+    if (dir) WidgetAPI.widget.resize(dir);
   };
 });
 
 const settingsBtn = document.getElementById("open-settings");
 if (settingsBtn) {
-    settingsBtn.onclick = () => invoke("open_module_settings", { id: "time-date" });
+    settingsBtn.onclick = () => WidgetAPI.widget.openSettings();
 }
 
 applyState();
