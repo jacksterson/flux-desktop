@@ -14,13 +14,15 @@ pub struct EngineSection {
     pub broadcast_interval_ms: u64,
     #[serde(default)]
     pub active_modules: Vec<String>,
+    #[serde(default)]
+    pub start_on_login: bool,
 }
 
 fn default_interval() -> u64 { 2000 }
 
 impl Default for EngineSection {
     fn default() -> Self {
-        Self { broadcast_interval_ms: default_interval(), active_modules: Vec::new() }
+        Self { broadcast_interval_ms: default_interval(), active_modules: Vec::new(), start_on_login: false }
     }
 }
 

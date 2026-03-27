@@ -6,12 +6,13 @@ pub mod broadcaster;
 mod paths;
 mod archive;
 mod module_settings;
+mod autostart;
 use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
 use tauri::{State, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, CheckMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use nvml_wrapper::Nvml;
 use std::time::Instant;
@@ -1108,6 +1109,7 @@ pub fn run() {
             let engine_config = read_config(&config_path);
             let interval_ms = engine_config.engine.broadcast_interval_ms;
             let active_on_start: Vec<String> = engine_config.engine.active_modules.clone();
+            let initial_autostart = engine_config.engine.start_on_login;
 
             app.manage(AppState {
                 sys: Mutex::new(System::new_all()),
@@ -1124,15 +1126,17 @@ pub fn run() {
 
             // System tray
             use tauri::menu::PredefinedMenuItem;
-            let open_i   = MenuItem::with_id(app, "open_cc", "Open Command Center",  true, None::<&str>)?;
-            let browse_i = MenuItem::with_id(app, "browse",  "Browse Themes Folder", true, None::<&str>)?;
-            let sep      = PredefinedMenuItem::separator(app)?;
-            let quit_i   = MenuItem::with_id(app, "quit",    "Quit Flux",            true, None::<&str>)?;
-            let menu     = Menu::with_items(app, &[&open_i, &browse_i, &sep, &quit_i])?;
+            let open_i    = MenuItem::with_id(app, "open_cc",          "Open Command Center",  true, None::<&str>)?;
+            let browse_i  = MenuItem::with_id(app, "browse",           "Browse Themes Folder", true, None::<&str>)?;
+            let login_i   = CheckMenuItem::with_id(app, "toggle_autostart", "Start on Login",  true, initial_autostart, None::<&str>)?;
+            let sep       = PredefinedMenuItem::separator(app)?;
+            let quit_i    = MenuItem::with_id(app, "quit",             "Quit Flux",            true, None::<&str>)?;
+            let menu      = Menu::with_items(app, &[&open_i, &browse_i, &login_i, &sep, &quit_i])?;
 
+            let login_i_clone = login_i.clone();
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
+                .on_menu_event(move |app: &AppHandle, event: tauri::menu::MenuEvent| match event.id.as_ref() {
                     "quit"    => std::process::exit(0),
                     "open_cc" => {
                         if let Some(win) = app.get_webview_window("command-center") {
@@ -1147,6 +1151,24 @@ pub fn run() {
                         let _ = std::fs::create_dir_all(&dir);
                         use tauri_plugin_opener::OpenerExt;
                         let _ = app.opener().open_path(dir.to_str().unwrap_or("."), None::<&str>);
+                    }
+                    "toggle_autostart" => {
+                        let state = app.state::<AppState>();
+                        let new_val = {
+                            let mut cfg = state.config.lock().unwrap();
+                            cfg.engine.start_on_login = !cfg.engine.start_on_login;
+                            cfg.engine.start_on_login
+                        };
+                        if new_val {
+                            if let Err(e) = autostart::enable() {
+                                eprintln!("[flux] autostart enable failed: {}", e);
+                            }
+                        } else if let Err(e) = autostart::disable() {
+                            eprintln!("[flux] autostart disable failed: {}", e);
+                        }
+                        let cfg = state.config.lock().unwrap();
+                        let _ = write_config(&state.config_path, &cfg);
+                        let _ = login_i_clone.set_checked(new_val);
                     }
                     _ => {}
                 })
