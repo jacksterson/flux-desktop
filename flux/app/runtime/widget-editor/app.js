@@ -959,7 +959,224 @@ document.getElementById('btn-new').addEventListener('click', cmdNew);
 document.getElementById('btn-open').addEventListener('click', cmdOpen);
 document.getElementById('btn-save').addEventListener('click', cmdSave);
 document.getElementById('btn-save-as').addEventListener('click', cmdSaveAs);
-document.getElementById('btn-export').addEventListener('click', () => console.log('export'));
+document.getElementById('btn-export').addEventListener('click', cmdExport);
+
+// ── Export dialog ─────────────────────────────────────────────────────────────
+
+function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-widget';
+}
+
+function cmdExport() {
+    let modal = document.getElementById('export-modal');
+    if (modal) modal.remove();
+
+    const data = JSON.parse(store.serialize());
+    const defaultName = data.meta.name || 'My Widget';
+    const defaultId   = slugify(defaultName);
+
+    modal = document.createElement('div');
+    modal.id = 'export-modal';
+    modal.innerHTML = `
+        <div class="export-dialog">
+            <h3>Export Widget</h3>
+            <div class="prop-row"><label class="prop-label">Name</label>
+                <input class="prop-input" id="exp-name" type="text" value="${escHtml(defaultName)}"></div>
+            <div class="prop-row"><label class="prop-label">Module ID</label>
+                <input class="prop-input" id="exp-id" type="text" value="${escHtml(defaultId)}"></div>
+            <div class="prop-row"><label class="prop-label">Width</label>
+                <input class="prop-input" id="exp-w" type="number" value="${data.canvas.width}" min="100"></div>
+            <div class="prop-row"><label class="prop-label">Height</label>
+                <input class="prop-input" id="exp-h" type="number" value="${data.canvas.height}" min="100"></div>
+            <div class="export-buttons">
+                <button id="exp-cancel" class="btn-secondary">Cancel</button>
+                <button id="exp-confirm" class="btn-primary">Export &amp; Install</button>
+            </div>
+            <div id="exp-status" style="display:none"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    document.getElementById('exp-name').addEventListener('input', function() {
+        document.getElementById('exp-id').value = slugify(this.value);
+    });
+
+    document.getElementById('exp-cancel').addEventListener('click', () => modal.remove());
+    document.getElementById('exp-confirm').addEventListener('click', () => runExport(modal));
+}
+
+async function runExport(modal) {
+    const name     = document.getElementById('exp-name').value.trim();
+    const moduleId = document.getElementById('exp-id').value.trim();
+    const width    = parseInt(document.getElementById('exp-w').value) || 400;
+    const height   = parseInt(document.getElementById('exp-h').value) || 300;
+
+    if (!name || !moduleId) {
+        showToast('Name and Module ID are required.', 'error');
+        return;
+    }
+
+    const statusEl = document.getElementById('exp-status');
+    statusEl.textContent = 'Generating\u2026';
+    statusEl.style.display = 'block';
+
+    const files = generateWidgetFiles(name, moduleId, width, height);
+
+    try {
+        await invoke('export_widget_package', {
+            name,
+            moduleId,
+            filesJson: JSON.stringify(files),
+        });
+        modal.remove();
+        showToast('Widget installed \u2014 activate from Command Center', 'info');
+    } catch (e) {
+        statusEl.textContent = 'Export failed: ' + e;
+        console.error('Export failed:', e);
+    }
+}
+
+function generateWidgetFiles(name, moduleId, width, height) {
+    const comps = store.getAll().filter(c => c.visible);
+    const sources = [...new Set(comps.filter(c => c.props && c.props.source).map(c => c.props.source))];
+
+    const sourceEventMap = {
+        cpu_avg: 'system:cpu', cpu_temp: 'system:cpu',
+        ram_pct: 'system:memory', ram_used_gb: 'system:memory',
+        gpu_pct: 'system:gpu', gpu_temp: 'system:gpu', vram_pct: 'system:gpu',
+        net_in_kbps: 'system:network', net_out_kbps: 'system:network',
+        disk_read_mbps: 'system:disk-io', disk_write_mbps: 'system:disk-io',
+        battery_pct: 'system:battery',
+    };
+    const events = [...new Set(sources.map(s => sourceEventMap[s]).filter(Boolean))];
+    const permissions = [...events.map(e => 'flux:event:' + e)];
+
+    // module.json
+    const moduleJson = JSON.stringify({
+        id: moduleId,
+        name,
+        entry: 'index.html',
+        window: { width, height, transparent: true, decorations: false, resizable: true },
+        permissions,
+    }, null, 2);
+
+    // style.css
+    const cssRules = comps.map(c => {
+        const p = c.props;
+        let css = `#comp-${c.id} { position:absolute; left:${c.x}px; top:${c.y}px; width:${c.width}px; height:${c.height}px; opacity:${c.opacity/100}; z-index:${c.zIndex}; box-sizing:border-box; overflow:hidden; `;
+        switch (c.type) {
+            case 'text':
+                css += `font-size:${p.fontSize}px; color:${p.color}; font-family:${p.fontFamily}; font-weight:${p.fontWeight}; text-align:${p.textAlign}; letter-spacing:${p.letterSpacing}px; display:flex; align-items:center;`;
+                break;
+            case 'metric':
+                css += `display:flex; flex-direction:column; justify-content:center;`;
+                break;
+            case 'progressbar':
+                css += `background:${p.bgColor}; border-radius:${p.borderRadius}px;`;
+                break;
+            case 'clock':
+                css += `display:flex; align-items:center; justify-content:center; font-family:${p.fontFamily}; font-size:${p.fontSize}px; color:${p.color};`;
+                break;
+        }
+        css += ' }';
+        return css;
+    }).join('\n');
+
+    // index.html
+    const compsHtml = comps.map(c => {
+        const p = c.props;
+        let inner = '';
+        switch (c.type) {
+            case 'text':
+                inner = escHtml(p.content);
+                break;
+            case 'metric':
+                inner = `${p.label ? `<div style="font-size:10px;color:#888;">${escHtml(p.label)}</div>` : ''}<div id="val-${c.id}" style="font-size:${p.fontSize}px;color:${p.color};font-family:${p.fontFamily};font-weight:bold;">--${escHtml(p.suffix)}</div>`;
+                break;
+            case 'progressbar':
+                inner = `<div id="pb-${c.id}" style="height:100%;width:0%;background:${p.fgColor};border-radius:${p.borderRadius}px;"></div>`;
+                break;
+            case 'linegraph':
+                inner = `<canvas id="lg-${c.id}" width="${c.width}" height="${c.height}"></canvas>`;
+                break;
+            case 'circlemeter':
+                inner = `<canvas id="cm-${c.id}" width="${c.width}" height="${c.height}"></canvas>`;
+                break;
+            case 'clock':
+                inner = `<span id="clk-${c.id}" data-format="${escHtml(p.format)}" data-tz="${escHtml(p.timezone)}">--:--</span>`;
+                break;
+            case 'divider':
+                inner = '';
+                break;
+        }
+        return `<div id="comp-${c.id}">${inner}</div>`;
+    }).join('\n');
+
+    const canvasData = JSON.parse(store.serialize()).canvas;
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="style.css">
+</head>
+<body style="margin:0;background:${canvasData.background};width:${width}px;height:${height}px;position:relative;">
+${compsHtml}
+<script src="widget-api.js"></script>
+<script src="logic.js"></script>
+</body>
+</html>`;
+
+    // logic.js
+    const logicLines = [];
+    logicLines.push(`const api = window.WidgetAPI;`);
+
+    const eventToComps = {};
+    for (const comp of comps) {
+        if (!comp.props || !comp.props.source) continue;
+        const ev = sourceEventMap[comp.props.source];
+        if (!ev) continue;
+        if (!eventToComps[ev]) eventToComps[ev] = [];
+        eventToComps[ev].push(comp);
+    }
+
+    for (const [ev, evComps] of Object.entries(eventToComps)) {
+        const body = evComps.map(comp => {
+            const src = comp.props.source;
+            switch (comp.type) {
+                case 'metric':
+                    return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id} && d['${src}'] !== undefined) el${comp.id}.textContent = parseFloat(d['${src}']).toFixed(${comp.props.decimalPlaces || 1}) + '${comp.props.suffix || ''}';`;
+                case 'progressbar':
+                    return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id} && d['${src}'] !== undefined) pb${comp.id}.style.width = Math.min(100,Math.max(0,parseFloat(d['${src}']))).toFixed(1) + '%';`;
+                default:
+                    return '';
+            }
+        }).filter(Boolean).join('\n');
+        if (body) {
+            logicLines.push(`api.system.subscribe('${ev}', d => {\n${body}\n});`);
+        }
+    }
+
+    const clockComps = comps.filter(c => c.type === 'clock');
+    if (clockComps.length > 0) {
+        const clockBody = clockComps.map(c => {
+            return `  const ck${c.id} = document.getElementById('clk-${c.id}'); if (ck${c.id}) ck${c.id}.textContent = fmt(ck${c.id}.dataset.format, ck${c.id}.dataset.tz);`;
+        }).join('\n');
+        logicLines.push(`function fmt(f, tz) { const n = tz==='local'?new Date():new Date(new Date().toLocaleString('en-US',{timeZone:tz})); const h24=n.getHours(),m=n.getMinutes(),s=n.getSeconds(),h12=h24%12||12,ap=h24<12?'AM':'PM',p=x=>String(x).padStart(2,'0'); return f.replace('HH',p(h24)).replace('mm',p(m)).replace('ss',p(s)).replace('hh',p(h12)).replace('A',ap); }`);
+        logicLines.push(`setInterval(()=>{\n${clockBody}\n}, 1000);`);
+    }
+
+    logicLines.push(`api.widget.enableDrag();`);
+    logicLines.push(`api.widget.enableResize();`);
+
+    const logicJs = logicLines.join('\n\n');
+
+    return {
+        'module.json': moduleJson,
+        'style.css': cssRules,
+        'index.html': indexHtml,
+        'logic.js': logicJs,
+    };
+}
 
 // ── Presets — implemented in Task 10 ─────────────────────────────────────────
 

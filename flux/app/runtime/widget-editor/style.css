@@ -299,3 +299,55 @@ input[type="range"].prop-input {
 }
 .toast-error { border-color: #f85149 !important; color: #f85149 !important; }
 .toast-info  { border-color: #00bfff !important; color: #00bfff !important; }
+
+/* ── Export modal ────────────────────────────────────────────────────────────── */
+
+#export-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+.export-dialog {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 20px;
+    width: 340px;
+    max-width: 90vw;
+}
+.export-dialog h3 {
+    margin: 0 0 16px;
+    color: #fff;
+    font-size: 14px;
+}
+.export-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.btn-primary {
+    background: #00bfff;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+.btn-primary:hover { background: #33cfff; }
+.btn-secondary {
+    background: #21262d;
+    color: #ccc;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.btn-secondary:hover { background: #30363d; color: #fff; }

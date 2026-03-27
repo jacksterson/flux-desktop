@@ -629,16 +629,47 @@ fn load_fluxwidget(path: String) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
-// NOTE: ThemeInfo return type used as stub. Task 12 implementer should verify
-// whether a new return type is needed before binding the frontend to ThemeInfo fields.
 #[tauri::command]
 fn export_widget_package(
-    _app: AppHandle,
-    _name: String,
-    _module_id: String,
-    _files_json: String
+    app: AppHandle,
+    name: String,
+    module_id: String,
+    files_json: String,
 ) -> Result<ThemeInfo, String> {
-    Err("Not implemented yet".to_string())
+    use std::collections::HashMap;
+    use std::io::Write;
+
+    let files: HashMap<String, String> = serde_json::from_str(&files_json)
+        .map_err(|e| format!("Invalid files JSON: {}", e))?;
+    let temp_zip = std::env::temp_dir().join(format!("flux-export-{}.zip", module_id));
+    let file = std::fs::File::create(&temp_zip).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+
+    let root = format!("flux-widget-{}", module_id);
+
+    // theme.json
+    zip.start_file(format!("{}/theme.json", root), options).map_err(|e| e.to_string())?;
+    let theme_json = serde_json::json!({
+        "id": format!("flux-widget-{}", module_id),
+        "name": name,
+        "modules": [module_id]
+    });
+    zip.write_all(theme_json.to_string().as_bytes()).map_err(|e| e.to_string())?;
+
+    // modules/<id>/...
+    for (filename, content) in &files {
+        zip.start_file(format!("{}/modules/{}/{}", root, module_id, filename), options)
+            .map_err(|e| e.to_string())?;
+        zip.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let info = do_install_archive(&temp_zip, &resource_dir)?;
+    let _ = std::fs::remove_file(&temp_zip);
+    Ok(info)
 }
 
 #[tauri::command]
