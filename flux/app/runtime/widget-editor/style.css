@@ -165,3 +165,23 @@ label {
     right: 16px;
     width: 210px;
 }
+
+/* ── Resize handles ─────────────────────────────────────────────────────────── */
+
+.resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    border: 1px solid #00bfff;
+    border-radius: 1px;
+    z-index: 10;
+}
+.rh-n  { top: -4px;    left: 50%;    transform: translateX(-50%); cursor: n-resize; }
+.rh-s  { bottom: -4px; left: 50%;    transform: translateX(-50%); cursor: s-resize; }
+.rh-e  { right: -4px;  top: 50%;     transform: translateY(-50%); cursor: e-resize; }
+.rh-w  { left: -4px;   top: 50%;     transform: translateY(-50%); cursor: w-resize; }
+.rh-ne { top: -4px;    right: -4px;  cursor: ne-resize; }
+.rh-nw { top: -4px;    left: -4px;   cursor: nw-resize; }
+.rh-se { bottom: -4px; right: -4px;  cursor: se-resize; }
+.rh-sw { bottom: -4px; left: -4px;   cursor: sw-resize; }

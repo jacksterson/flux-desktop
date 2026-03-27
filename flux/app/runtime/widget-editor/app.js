@@ -100,6 +100,45 @@ class ComponentStore {
 const store = new ComponentStore();
 let activeId = null;
 
+// Single drag/resize state object
+const _drag = { type: null, compId: null, ox: 0, oy: 0, startX: 0, startY: 0, startCompX: 0, startCompY: 0, startW: 0, startH: 0, handle: null };
+
+// ── Snap helper ───────────────────────────────────────────────────────────────
+
+function snapVal(v) {
+    if (!document.getElementById('btn-snap').classList.contains('active')) return Math.round(v);
+    return Math.round(v / 8) * 8;
+}
+
+// ── Drag/resize handlers ──────────────────────────────────────────────────────
+
+function onDragMove(e) {
+    if (!_drag.type) return;
+    const c = store.getById(_drag.compId);
+    if (!c) { _drag.type = null; return; }
+
+    if (_drag.type === 'move') {
+        c.x = snapVal(e.clientX - _drag.ox);
+        c.y = snapVal(e.clientY - _drag.oy);
+        renderCanvas();
+    } else if (_drag.type === 'resize') {
+        const dx = e.clientX - _drag.startX;
+        const dy = e.clientY - _drag.startY;
+        let nx = _drag.startCompX, ny = _drag.startCompY, nw = _drag.startW, nh = _drag.startH;
+        const h = _drag.handle;
+        if (h.includes('e')) nw = Math.max(20, snapVal(_drag.startW + dx));
+        if (h.includes('s')) nh = Math.max(10, snapVal(_drag.startH + dy));
+        if (h.includes('w')) { nw = Math.max(20, snapVal(_drag.startW - dx)); nx = snapVal(_drag.startCompX + dx); }
+        if (h.includes('n')) { nh = Math.max(10, snapVal(_drag.startH - dy)); ny = snapVal(_drag.startCompY + dy); }
+        store.update(c.id, { x: nx, y: ny, width: nw, height: nh });
+        renderCanvas();
+    }
+}
+
+function onDragEnd() {
+    _drag.type = null;
+}
+
 // ── Canvas renderer ───────────────────────────────────────────────────────────
 
 function renderCanvas() {
@@ -124,12 +163,46 @@ function renderCanvas() {
         if (activeId === comp.id) {
             el.style.outline = '2px solid #00bfff';
             el.style.outlineOffset = '1px';
+            el.style.overflow = 'visible';
         }
         renderComponentContent(el, comp);
+
+        // Component drag (move)
         el.addEventListener('mousedown', e => {
+            if (e.target.classList.contains('resize-handle')) return;
             selectComponent(comp.id);
+            _drag.type = 'move';
+            _drag.compId = comp.id;
+            _drag.ox = e.clientX - comp.x;
+            _drag.oy = e.clientY - comp.y;
             e.stopPropagation();
+            e.preventDefault();
         });
+
+        // Resize handles (active component only)
+        if (comp.id === activeId) {
+            const handleDirs = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+            for (const dir of handleDirs) {
+                const h = document.createElement('div');
+                h.className = 'resize-handle rh-' + dir;
+                h.dataset.dir = dir;
+                h.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    _drag.type = 'resize';
+                    _drag.compId = comp.id;
+                    _drag.handle = dir;
+                    _drag.startX = e.clientX;
+                    _drag.startY = e.clientY;
+                    _drag.startCompX = comp.x;
+                    _drag.startCompY = comp.y;
+                    _drag.startW = comp.width;
+                    _drag.startH = comp.height;
+                });
+                el.appendChild(h);
+            }
+        }
+
         canvasEl.appendChild(el);
     }
 }
@@ -342,5 +415,8 @@ for (const id of PANEL_IDS) {
 }
 
 // ── Initial render ────────────────────────────────────────────────────────────
+
+document.addEventListener('mousemove', onDragMove);
+document.addEventListener('mouseup',   onDragEnd);
 
 renderCanvas();
