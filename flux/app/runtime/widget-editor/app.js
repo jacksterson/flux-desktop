@@ -193,6 +193,7 @@ const _lgHistory = {};
 const store = new ComponentStore();
 let activeId = null;
 const history = new HistoryStack();
+let currentFilePath = null; // null means unsaved
 
 function pushHistory() {
     history.push(store.serialize());
@@ -875,12 +876,89 @@ document.getElementById('btn-snap').addEventListener('click', function() {
 
 document.getElementById('btn-refresh').addEventListener('click', () => location.reload());
 
-// ── File operations — implemented in Task 11 ──────────────────────────────────
+// ── File operations ───────────────────────────────────────────────────────────
 
-document.getElementById('btn-new').addEventListener('click', () => console.log('new'));
-document.getElementById('btn-open').addEventListener('click', () => console.log('open'));
-document.getElementById('btn-save').addEventListener('click', () => console.log('save'));
-document.getElementById('btn-save-as').addEventListener('click', () => console.log('save-as'));
+function showToast(message, type = 'info') {
+    let toast = document.getElementById('editor-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'editor-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.className = 'toast toast-' + type;
+    toast.style.display = 'block';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
+}
+
+async function cmdNew() {
+    // TODO: could prompt to save if dirty — for now just clear
+    store.deserialize(JSON.stringify({ version: 1, meta: { name: '', moduleId: '' }, canvas: { width: 400, height: 300, background: '#0A0F1A' }, components: [] }));
+    currentFilePath = null;
+    activeId = null;
+    history._stack = [];
+    history._ptr = -1;
+    pushHistory();
+    renderCanvas();
+    renderLayers();
+}
+
+async function cmdOpen() {
+    try {
+        const { open } = window.__TAURI__.dialog;
+        const selected = await open({
+            filters: [{ name: 'Flux Widget', extensions: ['fluxwidget'] }],
+            multiple: false,
+        });
+        if (!selected) return;
+        const json = await invoke('load_fluxwidget', { path: selected });
+        store.deserialize(json);
+        currentFilePath = selected;
+        activeId = null;
+        history._stack = [];
+        history._ptr = -1;
+        pushHistory();
+        renderCanvas();
+        renderLayers();
+    } catch (e) {
+        console.error('Open failed:', e);
+        showToast('Failed to open file: ' + e, 'error');
+    }
+}
+
+async function cmdSave() {
+    if (!currentFilePath) return cmdSaveAs();
+    try {
+        await invoke('save_fluxwidget', { path: currentFilePath, json: store.serialize() });
+        showToast('Saved.');
+    } catch (e) {
+        console.error('Save failed:', e);
+        showToast('Save failed: ' + e, 'error');
+    }
+}
+
+async function cmdSaveAs() {
+    try {
+        const { save } = window.__TAURI__.dialog;
+        const path = await save({
+            filters: [{ name: 'Flux Widget', extensions: ['fluxwidget'] }],
+            defaultPath: 'my-widget.fluxwidget',
+        });
+        if (!path) return;
+        await invoke('save_fluxwidget', { path, json: store.serialize() });
+        currentFilePath = path;
+        showToast('Saved.');
+    } catch (e) {
+        console.error('Save As failed:', e);
+        showToast('Save As failed: ' + e, 'error');
+    }
+}
+
+document.getElementById('btn-new').addEventListener('click', cmdNew);
+document.getElementById('btn-open').addEventListener('click', cmdOpen);
+document.getElementById('btn-save').addEventListener('click', cmdSave);
+document.getElementById('btn-save-as').addEventListener('click', cmdSaveAs);
 document.getElementById('btn-export').addEventListener('click', () => console.log('export'));
 
 // ── Presets — implemented in Task 10 ─────────────────────────────────────────

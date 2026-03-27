@@ -280,3 +280,22 @@ input[type="range"].prop-input {
 .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-vis  { font-size: 12px; cursor: pointer; opacity: 0.6; flex-shrink: 0; }
 .layer-vis:hover { opacity: 1; }
+
+/* ── Toast notification ──────────────────────────────────────────────────────── */
+
+#editor-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #161b22;
+    color: #ccc;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 12px;
+    z-index: 9999;
+    display: none;
+}
+.toast-error { border-color: #f85149 !important; color: #f85149 !important; }
+.toast-info  { border-color: #00bfff !important; color: #00bfff !important; }
