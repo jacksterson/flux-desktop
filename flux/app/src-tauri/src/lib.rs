@@ -1219,12 +1219,13 @@ pub fn run() {
 
             // System tray
             use tauri::menu::PredefinedMenuItem;
-            let open_i    = MenuItem::with_id(app, "open_cc",          "Open Command Center",  true, None::<&str>)?;
-            let browse_i  = MenuItem::with_id(app, "browse",           "Browse Themes Folder", true, None::<&str>)?;
+            let open_i         = MenuItem::with_id(app, "open_cc",       "Open Command Center",  true, None::<&str>)?;
+            let widget_editor_i = MenuItem::with_id(app, "widget_editor", "Widget Editor",     true, None::<&str>)?;
+            let browse_i       = MenuItem::with_id(app, "browse",       "Browse Themes Folder", true, None::<&str>)?;
             let login_i   = CheckMenuItem::with_id(app, "toggle_autostart", "Start on Login",  true, initial_autostart, None::<&str>)?;
             let sep       = PredefinedMenuItem::separator(app)?;
             let quit_i    = MenuItem::with_id(app, "quit",             "Quit Flux",            true, None::<&str>)?;
-            let menu      = Menu::with_items(app, &[&open_i, &browse_i, &login_i, &sep, &quit_i])?;
+            let menu      = Menu::with_items(app, &[&open_i, &widget_editor_i, &browse_i, &login_i, &sep, &quit_i])?;
 
             let login_i_clone = login_i.clone();
             let mut tray_builder = TrayIconBuilder::new()
@@ -1238,6 +1239,9 @@ pub fn run() {
                         } else {
                             let _ = build_command_center_window(app);
                         }
+                    }
+                    "widget_editor" => {
+                        let _ = open_widget_editor(app.clone());
                     }
                     "browse"  => {
                         let dir = flux_user_themes_dir();
