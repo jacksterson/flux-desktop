@@ -1,0 +1,7 @@
+{
+  "id": "bridges",
+  "name": "Bridges",
+  "description": "The default module pack. Clean, functional, desktop-ready.",
+  "version": "1.0.0",
+  "modules": ["system-stats", "time-date", "weather"]
+}

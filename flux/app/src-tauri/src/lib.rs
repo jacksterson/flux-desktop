@@ -125,6 +125,31 @@ pub struct AppState {
 
 // --- Commands ---
 
+/// Scan a single modules directory, appending discovered manifests to `modules`.
+/// Modules whose IDs are already in `seen_ids` are skipped (first-found wins).
+fn scan_modules_dir(
+    modules_path: &std::path::Path,
+    active_ids: &std::collections::HashSet<String>,
+    seen_ids: &mut std::collections::HashSet<String>,
+    modules: &mut Vec<ModuleManifest>,
+) {
+    if let Ok(entries) = fs::read_dir(modules_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(content) = fs::read_to_string(path.join("module.json")) {
+                    if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
+                        if seen_ids.insert(manifest.id.clone()) {
+                            manifest.active = active_ids.contains(&manifest.id);
+                            modules.push(manifest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifest> {
     // Snapshot active IDs under lock, then release before doing filesystem I/O
@@ -135,27 +160,28 @@ fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifes
     let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut modules = Vec::new();
 
-    let bundled_path = app.path().resource_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("modules");
+    let resource_dir = app.path().resource_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
 
-    for modules_path in [flux_modules_dir(), bundled_path] {
-        if let Ok(entries) = fs::read_dir(&modules_path) {
+    // 1. User-installed modules (~/.local/share/flux/modules/) — highest priority
+    scan_modules_dir(&flux_modules_dir(), &active_ids, &mut seen_ids, &mut modules);
+
+    // 2. Bundled theme packs (resource_dir/themes/*/modules/)
+    let themes_dir = resource_dir.join("themes");
+    if themes_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&themes_dir) {
             for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Ok(content) = fs::read_to_string(path.join("module.json")) {
-                        if let Ok(mut manifest) = serde_json::from_str::<ModuleManifest>(&content) {
-                            if seen_ids.insert(manifest.id.clone()) {
-                                manifest.active = active_ids.contains(&manifest.id);
-                                modules.push(manifest);
-                            }
-                        }
-                    }
+                let modules_path = entry.path().join("modules");
+                if modules_path.is_dir() {
+                    scan_modules_dir(&modules_path, &active_ids, &mut seen_ids, &mut modules);
                 }
             }
         }
     }
+
+    // 3. Legacy flat bundled path (resource_dir/modules/) — backwards compat, removed in Phase 1
+    scan_modules_dir(&resource_dir.join("modules"), &active_ids, &mut seen_ids, &mut modules);
+
     modules
 }
 
@@ -197,14 +223,30 @@ fn toggle_module(app: AppHandle, state: State<'_, AppState>, id: String) -> Resu
         state.desktop_wayland_windows.lock().unwrap().remove(&id);
     } else {
         let user_manifest = flux_modules_dir().join(&id).join("module.json");
-        let bundled_manifest = app.path().resource_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("modules").join(&id).join("module.json");
+        let resource_dir = app.path().resource_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
 
+        // Resolution order: user > themes packs > legacy flat bundled
         let manifest_path = if user_manifest.exists() {
             user_manifest
         } else {
-            bundled_manifest
+            // Search themes/*/modules/<id>/module.json
+            let themes_dir = resource_dir.join("themes");
+            let theme_manifest = if themes_dir.exists() {
+                std::fs::read_dir(&themes_dir)
+                    .ok()
+                    .and_then(|entries| {
+                        entries.flatten().find_map(|entry| {
+                            let p = entry.path().join("modules").join(&id).join("module.json");
+                            if p.exists() { Some(p) } else { None }
+                        })
+                    })
+            } else {
+                None
+            };
+            theme_manifest.unwrap_or_else(|| {
+                resource_dir.join("modules").join(&id).join("module.json")
+            })
         };
 
         if let Ok(content) = fs::read_to_string(&manifest_path) {
@@ -464,19 +506,51 @@ pub fn run() {
                     return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
                 }
             } else {
-                // Not in user dir — try bundled resources
-                let bundled_base = ctx.app_handle().path().resource_dir()
-                    .unwrap_or_else(|_| PathBuf::from("."))
-                    .join("modules");
-                let bundled_candidate = bundled_base.join(path_part);
-                if let Ok(canonical) = bundled_candidate.canonicalize() {
-                    if canonical.starts_with(&bundled_base.canonicalize().unwrap_or(bundled_base.clone())) {
-                        canonical
-                    } else {
-                        return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
-                    }
+                // Not in user dir — search theme packs, then legacy flat bundled path
+                let resource_dir = ctx.app_handle().path().resource_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."));
+
+                // Try themes/*/modules/<path_part>
+                let themes_dir = resource_dir.join("themes");
+                let theme_canonical = if themes_dir.exists() {
+                    std::fs::read_dir(&themes_dir)
+                        .ok()
+                        .and_then(|entries| {
+                            entries.flatten().find_map(|entry| {
+                                let theme_modules_base = entry.path().join("modules");
+                                let candidate = theme_modules_base.join(path_part);
+                                if let Ok(canonical) = candidate.canonicalize() {
+                                    let base_canonical = theme_modules_base.canonicalize()
+                                        .unwrap_or(theme_modules_base.clone());
+                                    if canonical.starts_with(&base_canonical) {
+                                        Some(canonical)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            })
+                        })
                 } else {
-                    return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+                    None
+                };
+
+                if let Some(canonical) = theme_canonical {
+                    canonical
+                } else {
+                    // Legacy flat bundled path
+                    let bundled_base = resource_dir.join("modules");
+                    let bundled_candidate = bundled_base.join(path_part);
+                    if let Ok(canonical) = bundled_candidate.canonicalize() {
+                        if canonical.starts_with(&bundled_base.canonicalize().unwrap_or(bundled_base.clone())) {
+                            canonical
+                        } else {
+                            return tauri::http::Response::builder().status(403).body(Vec::new()).unwrap();
+                        }
+                    } else {
+                        return tauri::http::Response::builder().status(404).body(Vec::new()).unwrap();
+                    }
                 }
             };
 
