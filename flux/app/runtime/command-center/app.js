@@ -276,6 +276,10 @@ function escAttr(str) {
   return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+document.getElementById('btn-open-widget-editor').addEventListener('click', () => {
+  invoke('open_widget_editor').catch(console.error);
+});
+
 document.getElementById('browse-btn').addEventListener('click', openThemesFolder);
 document.getElementById('close-btn').addEventListener('click', () => {
   window.__TAURI__.window.getCurrentWindow().close();

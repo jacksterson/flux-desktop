@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flux Widget Editor</title>
+  <script src="flux-module://_flux/widget-api.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="top-bar">
+    <div class="tb-left">
+      <button id="btn-new">New</button>
+      <button id="btn-open">Open</button>
+      <button id="btn-save">Save</button>
+      <button id="btn-save-as">Save As</button>
+      <button id="btn-export">Export Widget</button>
+    </div>
+    <div class="tb-center">
+      <label>W <input type="number" id="canvas-width" value="400" min="100" max="2000"></label>
+      <label>H <input type="number" id="canvas-height" value="300" min="100" max="2000"></label>
+    </div>
+    <div class="tb-right">
+      <button id="btn-grid" class="toggle-btn">Grid</button>
+      <button id="btn-snap" class="toggle-btn">Snap</button>
+      <button id="btn-refresh">&#8635; Refresh</button>
+      <div class="preset-swatch" id="preset-ds" title="Death Stranding HUD" style="background:#0A0F1A;border:2px solid #00BFFF;"></div>
+      <div class="preset-swatch" id="preset-md" title="Minimal Dark" style="background:#111111;border:2px solid #EEEEEE;"></div>
+      <div class="preset-swatch" id="preset-ml" title="Minimal Light" style="background:#F5F5F5;border:2px solid #222222;"></div>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <div id="canvas"></div>
+  </div>
+
+  <div class="panel" id="panel-components">
+    <div class="panel-header">Components</div>
+    <div class="panel-body" id="components-list"></div>
+  </div>
+
+  <div class="panel" id="panel-properties">
+    <div class="panel-header">Properties</div>
+    <div class="panel-body" id="properties-content"><p class="empty-state">Select a component to edit.</p></div>
+  </div>
+
+  <div class="panel" id="panel-layers">
+    <div class="panel-header">Layers</div>
+    <div class="panel-body" id="layers-list"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
