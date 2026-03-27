@@ -101,6 +101,9 @@ function applyState() {
 }
 
 // --- Glitch Cycling ---
+const _cycleIntervals = [];
+const _cycleTimeouts = [];
+
 function cycleSingleIcon(cat) {
     const iconEl = document.getElementById(`icon-${cat}`);
     if (!iconEl) return;
@@ -108,40 +111,22 @@ function cycleSingleIcon(cat) {
     void iconEl.offsetWidth;
     iconEl.classList.add('glitching');
     poolIndices[cat] = (poolIndices[cat] + 1) % ICON_POOLS[cat].length;
-    setTimeout(() => {
+    const tid = setTimeout(() => {
         iconEl.src = `assets/icons/${ICON_POOLS[cat][poolIndices[cat]]}`;
     }, 120);
+    _cycleTimeouts.push(tid);
 }
 
 function startStaggeredCycling() {
     const categories = ['wind', 'humidity', 'uv', 'precip', 'visibility'];
     categories.forEach((cat, index) => {
-        setTimeout(() => {
+        const tid = setTimeout(() => {
             cycleSingleIcon(cat);
-            setInterval(() => cycleSingleIcon(cat), 15000);
-        }, index * 3000 + (Math.random() * 1000)); 
+            const iid = setInterval(() => cycleSingleIcon(cat), 15000);
+            _cycleIntervals.push(iid);
+        }, index * 3000 + (Math.random() * 1000));
+        _cycleTimeouts.push(tid);
     });
-}
-
-// --- Smooth Carousel (24h availability) ---
-function updateCarousel() {
-    const hourlyGrid = document.getElementById("hourly-grid");
-    const isMetric = state.units === "Metric";
-    const now = new Date();
-    const nowHour = now.getHours();
-    const nowMin = now.getMinutes();
-    const nowSec = now.getSeconds();
-    const itemWidth = 50; 
-
-    // Calculate fractional hour
-    const fractionalHour = nowHour + (nowMin / 60) + (nowSec / 3600);
-
-    // Render 3 sets of 24 hours (Yesterday, Today, Tomorrow) for 24h continuous availability
-    if (hourlyGrid.children.length === 0) {
-        for (let set = -1; i <= 1; i++) { // wait i is not defined, should be set
-            // fixing logic below
-        }
-    }
 }
 
 function initCarousel() {
@@ -252,7 +237,7 @@ function initUI() {
 
 // --- Interactions ---
 const container = document.getElementById("main-container");
-window.addEventListener("mousemove", (e) => {
+function _handleMouseMove(e) {
   const rect = container.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
@@ -260,7 +245,8 @@ window.addEventListener("mousemove", (e) => {
   container.style.setProperty("--mouse-y", `${y}px`);
   const isInside = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
   container.style.setProperty("--pattern-opacity", isInside ? "1" : "0");
-});
+}
+window.addEventListener("mousemove", _handleMouseMove);
 
 container.addEventListener("mousedown", (e) => {
   const target = e.target;
@@ -288,6 +274,9 @@ startStaggeredCycling();
 
 function _cleanup() {
   clearInterval(_clockInterval);
+  _cycleIntervals.forEach(id => clearInterval(id));
+  _cycleTimeouts.forEach(id => clearTimeout(id));
   window.removeEventListener('storage', _handleStorage);
+  window.removeEventListener('mousemove', _handleMouseMove);
 }
 window._fluxCleanup = _cleanup;

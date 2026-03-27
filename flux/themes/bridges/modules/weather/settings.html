@@ -226,14 +226,20 @@
 
         // Spotlight
         const container = document.getElementById("main-container");
-        window.addEventListener("mousemove", (e) => {
+        function _handleMouseMove(e) {
             const rect = container.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             container.style.setProperty("--mouse-x", `${x}px`);
             container.style.setProperty("--mouse-y", `${y}px`);
             container.style.setProperty("--pattern-opacity", "1");
-        });
+        }
+        window.addEventListener("mousemove", _handleMouseMove);
+
+        function _cleanup() {
+            window.removeEventListener("mousemove", _handleMouseMove);
+        }
+        window._fluxCleanup = _cleanup;
 
         // Dragging
         document.getElementById("drag-header").onmousedown = (e) => {
