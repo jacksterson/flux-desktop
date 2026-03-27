@@ -9,11 +9,33 @@
 <body>
   <header class="app-header">
     <h1 class="app-title">Flux</h1>
-    <button class="btn-secondary" id="browse-btn">Browse Themes Folder</button>
+    <div class="header-actions">
+      <button class="btn-secondary" id="install-btn">Install Theme…</button>
+      <button class="btn-secondary" id="browse-btn">Browse Themes Folder</button>
+    </div>
   </header>
-  <main id="themes-container">
-    <p class="status-text">Loading themes…</p>
-  </main>
+
+  <div class="install-status" id="install-status" hidden></div>
+
+  <div class="cc-body">
+    <main id="themes-container">
+      <p class="status-text">Loading themes…</p>
+    </main>
+
+    <aside class="settings-panel" id="settings-panel" hidden>
+      <div class="settings-panel-header">
+        <span class="settings-panel-title" id="settings-panel-title">Settings</span>
+        <button class="settings-close-btn" id="settings-close-btn" title="Close">✕</button>
+      </div>
+      <div class="settings-panel-body" id="settings-panel-body"></div>
+    </aside>
+  </div>
+
+  <!-- Drop zone overlay (shown while dragging a file over the window) -->
+  <div class="drop-overlay" id="drop-overlay" hidden>
+    <div class="drop-overlay-inner">Drop theme archive to install</div>
+  </div>
+
   <script src="flux-module://_flux/command-center/app.js"></script>
 </body>
 </html>
