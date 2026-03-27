@@ -66,6 +66,8 @@ pub struct ModuleManifest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub active: bool,
+    #[serde(default)]
+    pub settings: Vec<SettingDef>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -99,6 +101,23 @@ pub struct ThemeInfo {
     pub preview_url: Option<String>,
     pub modules: Vec<ModuleInfo>,
     pub source: String, // "user" | "bundled"
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SettingDef {
+    pub key: String,
+    pub label: String,
+    #[serde(rename = "type")]
+    pub field_type: String,
+    pub default: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 // --- Window State Persistence ---
@@ -1056,6 +1075,26 @@ mod tests {
         }"#;
         let manifest: ModuleManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.window.window_level, WindowLevel::Desktop);
+    }
+
+    #[test]
+    fn module_manifest_parses_settings_array() {
+        let json = r#"{
+            "id": "t", "name": "T", "author": "a", "version": "1.0.0",
+            "entry": "index.html",
+            "window": { "width": 400, "height": 300, "transparent": false,
+                        "decorations": true, "windowLevel": "desktop", "resizable": true },
+            "permissions": [],
+            "settings": [
+                { "key": "interval", "label": "Interval", "type": "range",
+                  "default": 2000, "min": 500, "max": 10000, "step": 100, "options": [] }
+            ]
+        }"#;
+        let m: ModuleManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.settings.len(), 1);
+        assert_eq!(m.settings[0].key, "interval");
+        assert_eq!(m.settings[0].field_type, "range");
+        assert_eq!(m.settings[0].default, serde_json::json!(2000));
     }
 
     #[test]
