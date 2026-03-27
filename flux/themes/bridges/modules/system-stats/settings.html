@@ -188,6 +188,9 @@
             state.theme.font_tech = document.getElementById("cfg-font-tech").value;
 
             localStorage.setItem("flux_sys_stats_state", JSON.stringify(state));
+            // Manually dispatch storage event: localStorage.setItem() does NOT fire 'storage'
+            // in the same window that set it — only in other windows sharing the origin.
+            // This triggers live sync to the main module window.
             window.dispatchEvent(new Event('storage'));
         }
 

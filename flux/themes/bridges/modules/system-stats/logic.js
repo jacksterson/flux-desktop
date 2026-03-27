@@ -61,7 +61,9 @@ class FluxGraph {
     if (rect.width === 0) return;
     this.canvas.width = rect.width * dpr;
     this.canvas.height = rect.height * dpr;
-    this.ctx.scale(dpr, dpr);
+    // Use setTransform instead of scale() to reset the matrix to exactly the
+    // desired DPR scale — prevents DPR accumulation across multiple resize calls.
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   update(value, max, color) {
@@ -105,12 +107,6 @@ class FluxGraph {
   }
 }
 
-const cpuGraph = new FluxGraph("cpu-graph");
-const ramGraph = new FluxGraph("ram-graph");
-const gpuGraph = new FluxGraph("gpu-graph");
-const netGraph = new FluxGraph("net-graph");
-const diskGraph = new FluxGraph("disk-graph");
-
 function getSeverityColor(val, temp) {
   if (val >= state.cfg.redUsage || temp >= state.cfg.redTemp) return state.theme.danger;
   if (val >= state.cfg.amberUsage || temp >= state.cfg.amberTemp) return state.theme.caution;
@@ -128,12 +124,32 @@ function formatUptime(secs) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// --- Cleanup registry (called by engine on hot-reload) ---
+// <script src="logic.js"> is at the end of <body>, so the DOM is already fully
+// parsed when this script runs — no DOMContentLoaded wrapper needed.
+const _unlisteners = [];
+let _uptimeInterval = null;
+
+function _cleanup() {
+  _unlisteners.forEach(fn => fn && fn());
+  clearInterval(_uptimeInterval);
+}
+window._fluxCleanup = _cleanup;
+
+// --- Init ---
+
+const cpuGraph = new FluxGraph("cpu-graph");
+const ramGraph = new FluxGraph("ram-graph");
+const gpuGraph = new FluxGraph("gpu-graph");
+const netGraph = new FluxGraph("net-graph");
+const diskGraph = new FluxGraph("disk-graph");
+
 WidgetAPI.system.uptime().then((secs) => {
   uptimeSeconds = secs;
   document.getElementById("uptime").textContent = formatUptime(uptimeSeconds);
 }).catch(() => {});
 
-setInterval(() => {
+_uptimeInterval = setInterval(() => {
   uptimeSeconds += 1;
   document.getElementById("uptime").textContent = formatUptime(uptimeSeconds);
 }, 1000);
@@ -141,7 +157,7 @@ setInterval(() => {
 // --- Subscribe to pushed events ---
 
 // CPU
-WidgetAPI.system.subscribe('cpu', (data) => {
+_unlisteners.push(WidgetAPI.system.subscribe('cpu', (data) => {
   const cpuPct = data.avg_usage;
   const cpuTemp = data.cpu_temp != null ? data.cpu_temp : 0;
   const cpuFreqMHz = data.frequency;
@@ -152,10 +168,10 @@ WidgetAPI.system.subscribe('cpu', (data) => {
   document.getElementById("cpu-freq").textContent = `${toGHz(cpuFreqMHz)} GHz`;
   document.querySelector("#cpu-section .stats-right").style.color = cColor;
   cpuGraph.update(cpuPct, 100, cColor);
-});
+}));
 
 // Memory
-WidgetAPI.system.subscribe('memory', (data) => {
+_unlisteners.push(WidgetAPI.system.subscribe('memory', (data) => {
   const ramUsed = data.used;
   const ramTotal = data.total;
   const ramPct = ramTotal > 0 ? (ramUsed / ramTotal) * 100 : 0;
@@ -165,10 +181,10 @@ WidgetAPI.system.subscribe('memory', (data) => {
   document.getElementById("ram-used").textContent = `${toGiB(ramUsed)}/${toGiB(ramTotal)} GiB`;
   document.querySelector("#ram-section .stats-right").style.color = rColor;
   ramGraph.update(ramPct, 100, rColor);
-});
+}));
 
 // GPU — null if no GPU detected
-WidgetAPI.system.subscribe('gpu', (data) => {
+_unlisteners.push(WidgetAPI.system.subscribe('gpu', (data) => {
   if (!data) return;
   const vramPct = data.vram_percentage;
   const gpuTemp = data.temp != null ? data.temp : 0;
@@ -179,10 +195,10 @@ WidgetAPI.system.subscribe('gpu', (data) => {
   document.getElementById("vram-info").textContent = `${toGiB(data.vram_used)}/${toGiB(data.vram_total)} GiB`;
   document.querySelector("#gpu-section .stats-right").style.color = gColor;
   gpuGraph.update(vramPct, 100, gColor);
-});
+}));
 
 // Network — broadcaster emits an array of per-interface objects; sum across all.
-WidgetAPI.system.subscribe('network', (data) => {
+_unlisteners.push(WidgetAPI.system.subscribe('network', (data) => {
   const interfaces = Array.isArray(data) ? data : [data];
   const netIn  = interfaces.reduce((sum, iface) => sum + (iface.received    || 0), 0);
   const netOut = interfaces.reduce((sum, iface) => sum + (iface.transmitted || 0), 0);
@@ -190,17 +206,17 @@ WidgetAPI.system.subscribe('network', (data) => {
   document.getElementById("net-in").textContent  = `IN: ${fmtBS(netIn)}`;
   document.getElementById("net-out").textContent = `OUT: ${fmtBS(netOut)}`;
   netGraph.update(netIn + netOut, 1024 * 1024 * 2, state.theme.primary);
-});
+}));
 
 // Disk I/O — fields are `read` and `write` (optional u64, null on non-Linux)
-WidgetAPI.system.subscribe('disk-io', (data) => {
+_unlisteners.push(WidgetAPI.system.subscribe('disk-io', (data) => {
   const diskRead  = data.read  != null ? data.read  : 0;
   const diskWrite = data.write != null ? data.write : 0;
 
   document.getElementById("disk-read").textContent  = `READ: ${fmtBS(diskRead)}`;
   document.getElementById("disk-write").textContent = `WRITE: ${fmtBS(diskWrite)}`;
   diskGraph.update(diskRead + diskWrite, 1024 * 1024 * 10, state.theme.primary);
-});
+}));
 
 // --- Mouse / spotlight effect ---
 const container = document.getElementById("main-container");
