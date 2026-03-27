@@ -152,6 +152,23 @@
     close() {
       return invoke('close_window', { label: windowLabel });
     },
+
+    /**
+     * Get the current settings for this module.
+     * Returns a Promise that resolves to a plain object { key: value, ... }.
+     */
+    getSettings() {
+      return invoke('get_module_settings', { moduleId: windowLabel });
+    },
+
+    /**
+     * Save a single setting value for this module.
+     * @param {string} key
+     * @param {*} value
+     */
+    saveSetting(key, value) {
+      return invoke('set_module_setting', { moduleId: windowLabel, key, value });
+    },
   };
 
   // --- Expose ---
