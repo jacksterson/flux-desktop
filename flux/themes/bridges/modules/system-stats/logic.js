@@ -252,7 +252,7 @@ document.querySelectorAll(".resizer").forEach(r => {
   r.onmousedown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const dir = r.dataset.direction;
-    if (dir) WidgetAPI.widget.resize(dir);
+    if (dir) WidgetAPI.widget.resize(dir, e);
   };
 });
 

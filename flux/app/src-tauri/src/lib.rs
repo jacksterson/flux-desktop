@@ -873,6 +873,27 @@ async fn move_module(
 }
 
 #[tauri::command]
+fn resize_module(app: AppHandle, id: String, direction: String, dx: i32, dy: i32) -> Result<(), String> {
+    let window = app.get_webview_window(&id).ok_or_else(|| format!("resize_module: window '{}' not found", id))?;
+    let current = window.inner_size().map_err(|e| e.to_string())?;
+    let (dw, dh): (i32, i32) = match direction.as_str() {
+        "East"      => (dx, 0),
+        "West"      => (-dx, 0),
+        "North"     => (0, -dy),
+        "South"     => (0, dy),
+        "NorthEast" => (dx, -dy),
+        "NorthWest" => (-dx, -dy),
+        "SouthEast" => (dx, dy),
+        "SouthWest" => (-dx, dy),
+        other => return Err(format!("resize_module: unknown direction '{}'", other)),
+    };
+    let new_w = (current.width as i32 + dw).max(100) as u32;
+    let new_h = (current.height as i32 + dh).max(100) as u32;
+    window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: new_w, height: new_h }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn is_layer_shell_window(window: WebviewWindow, state: State<'_, AppState>) -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -1165,7 +1186,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             drag_window, list_modules, toggle_module,
-            open_module_settings, close_window, move_module,
+            open_module_settings, close_window, move_module, resize_module,
             is_layer_shell_window,
             list_themes,
             activate_theme, deactivate_theme,

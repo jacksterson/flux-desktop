@@ -28,7 +28,23 @@ html, body {
   height: 100vh;
   padding: 28px;
   gap: 20px;
+  position: relative;
 }
+
+.wizard-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.wizard-close-btn:hover { background: var(--surface); color: var(--text); }
 
 /* ── Progress bar ── */
 .progress-bar {

@@ -24,6 +24,8 @@ document.addEventListener('keydown', async (e) => {
   if (e.key === 'Escape') await runEscapePath();
 });
 
+document.getElementById('btn-close-wizard').addEventListener('click', runEscapePath);
+
 async function runEscapePath() {
   try {
     await invoke('wizard_escape', { activeModules: [...selectedModules] });

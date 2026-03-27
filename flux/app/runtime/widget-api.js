@@ -128,15 +128,43 @@
       window.addEventListener('mouseup', onMouseUp);
     },
 
-    // Note: startResizeDragging has no layer-shell equivalent — on Wayland compositor
-    // controls window geometry. If called on a layer-shell window it will silently no-op.
     /**
      * Start a resize drag in the given direction.
      *
+     * Platform-aware:
+     * - Non-layer-shell: delegates to appWindow.startResizeDragging()
+     * - Wayland layer-shell: tracks mousemove deltas and calls resize_module on the backend
+     *
      * @param {string} direction - Tauri resize direction string, e.g. 'South', 'East', etc.
+     * @param {MouseEvent} mousedownEvent - The mousedown event that initiated the resize.
      */
-    resize(direction) {
-      appWindow.startResizeDragging(direction);
+    resize(direction, mousedownEvent) {
+      if (!_isLayerShell) {
+        appWindow.startResizeDragging(direction).catch((e) => console.warn('[WidgetAPI] startResizeDragging failed:', e));
+        return;
+      }
+
+      // Wayland layer-shell resize via delta tracking
+      let lastX = mousedownEvent.screenX;
+      let lastY = mousedownEvent.screenY;
+
+      function onMouseMove(e) {
+        const dx = Math.round(e.screenX - lastX);
+        const dy = Math.round(e.screenY - lastY);
+        lastX = e.screenX;
+        lastY = e.screenY;
+        if (dx !== 0 || dy !== 0) {
+          invoke('resize_module', { id: windowLabel, direction, dx, dy }).catch((e) => console.warn('[WidgetAPI] resize_module failed:', e));
+        }
+      }
+
+      function onMouseUp() {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      }
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
     },
 
     /**

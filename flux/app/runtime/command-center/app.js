@@ -277,5 +277,8 @@ function escAttr(str) {
 }
 
 document.getElementById('browse-btn').addEventListener('click', openThemesFolder);
+document.getElementById('close-btn').addEventListener('click', () => {
+  window.__TAURI__.window.getCurrentWindow().close();
+});
 
 loadThemes();
