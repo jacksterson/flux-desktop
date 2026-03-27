@@ -148,11 +148,8 @@
         </div>
     </div>
 
-    <script type="module">
-        const { invoke } = window.__TAURI__.core;
-        const { getCurrentWindow } = window.__TAURI__.window;
-        const appWindow = getCurrentWindow();
-
+    <script src="flux-module://_flux/widget-api.js"></script>
+    <script>
         const DEFAULT_STATE = {
             cfg: { amberUsage: 70, redUsage: 90, amberTemp: 75, redTemp: 85, bgAlpha: 80 },
             theme: {
@@ -211,19 +208,19 @@
 
         // Dragging
         document.getElementById("drag-header").onmousedown = (e) => {
-            if (e.target.id !== "close-btn") appWindow.startDragging();
+            if (e.target.id !== "close-btn") WidgetAPI.widget.drag(e);
         };
-        
+
         // Resizing
         document.querySelector(".resizer-rb").onmousedown = (e) => {
             e.preventDefault(); e.stopPropagation();
-            appWindow.startResizeDragging("SouthEast");
+            WidgetAPI.widget.resize("SouthEast");
         };
 
         const closeBtn = document.getElementById("close-btn");
-        closeBtn.onclick = async (e) => {
+        closeBtn.onclick = (e) => {
             e.stopPropagation();
-            await invoke("close_window");
+            WidgetAPI.widget.close();
         };
 
         syncUI();

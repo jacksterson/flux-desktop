@@ -1,8 +1,5 @@
 // System Stats Module Logic
-const { invoke } = window.__TAURI__.core;
-const { getCurrentWindow } = window.__TAURI__.window;
-
-const appWindow = getCurrentWindow();
+// Data is received via WidgetAPI push subscriptions — no polling.
 
 // --- Formatting ---
 const toGiB = (b) => (b / (1024 ** 3)).toFixed(1);
@@ -10,7 +7,7 @@ const toGHz = (m) => (m / 1000).toFixed(1);
 const fmtBS = (b) => {
   if (b < 1024) return `${b.toFixed(0)} B/s`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB/s`;
-  return `${(b / (1024 * (1024))).toFixed(1)} MB/s`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB/s`;
 };
 
 // --- Config State ---
@@ -36,12 +33,12 @@ function applyState() {
   root.style.setProperty("--color-hud-danger", state.theme.danger);
   root.style.setProperty("--font-main", state.theme.font_main);
   root.style.setProperty("--font-tech", state.theme.font_tech);
-  
-  const r = 10, g = 15, b = 26; 
+
+  const r = 10, g = 15, b = 26;
   root.style.setProperty("--color-bg-base", `rgba(${r}, ${g}, ${b}, ${state.cfg.bgAlpha / 100})`);
 }
 
-// Refresh logic when settings window saves data
+// Refresh when settings window saves data
 window.addEventListener('storage', () => {
   state = JSON.parse(localStorage.getItem("flux_sys_stats_state")) || DEFAULT_STATE;
   applyState();
@@ -120,49 +117,92 @@ function getSeverityColor(val, temp) {
   return state.theme.primary;
 }
 
-async function tick() {
-  try {
-    const stats = await invoke("get_system_stats");
-    document.getElementById("uptime").textContent = stats.uptime;
+// --- Uptime display ---
+// Fetch uptime once on load, then update the counter locally every second.
+let uptimeSeconds = 0;
 
-    // CPU
-    const cColor = getSeverityColor(stats.cpu_usage, stats.cpu_temp);
-    document.getElementById("cpu-usage").textContent = `${stats.cpu_usage.toFixed(1)}%`;
-    document.getElementById("cpu-temp").textContent = `${stats.cpu_temp.toFixed(0)}°C`;
-    document.getElementById("cpu-freq").textContent = `${toGHz(stats.cpu_freq)} GHz`;
-    document.querySelector("#cpu-section .stats-right").style.color = cColor;
-    cpuGraph.update(stats.cpu_usage, 100, cColor);
-
-    // GPU
-    if (stats.gpu) {
-      const vramPct = stats.gpu.vram_percentage;
-      const gColor = getSeverityColor(vramPct, stats.gpu.temp);
-      document.getElementById("gpu-usage-pct").textContent = `${vramPct.toFixed(1)}%`;
-      document.getElementById("gpu-temp").textContent = `${stats.gpu.temp.toFixed(0)}°C`;
-      document.getElementById("vram-info").textContent = `${toGiB(stats.gpu.vram_used)}/${toGiB(stats.gpu.vram_total)} GiB`;
-      document.querySelector("#gpu-section .stats-right").style.color = gColor;
-      gpuGraph.update(vramPct, 100, gColor);
-    }
-
-    // RAM
-    const rColor = getSeverityColor(stats.ram_percentage, 0);
-    document.getElementById("ram-percentage").textContent = `${stats.ram_percentage.toFixed(1)}%`;
-    document.getElementById("ram-used").textContent = `${toGiB(stats.ram_used)}/${toGiB(stats.ram_total)} GiB`;
-    document.querySelector("#ram-section .stats-right").style.color = rColor;
-    ramGraph.update(stats.ram_percentage, 100, rColor);
-
-    // IO
-    document.getElementById("net-in").textContent = `IN: ${fmtBS(stats.net_in)}`;
-    document.getElementById("net-out").textContent = `OUT: ${fmtBS(stats.net_out)}`;
-    document.getElementById("disk-read").textContent = `READ: ${fmtBS(stats.disk_read)}`;
-    document.getElementById("disk-write").textContent = `WRITE: ${fmtBS(stats.disk_write)}`;
-    netGraph.update(stats.net_in + stats.net_out, 1024 * 1024 * 2, state.theme.primary);
-    diskGraph.update(stats.disk_read + stats.disk_write, 1024 * 1024 * 10, state.theme.primary);
-
-  } catch (e) { console.error(e); }
+function formatUptime(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// Events
+WidgetAPI.system.uptime().then((secs) => {
+  uptimeSeconds = secs;
+  document.getElementById("uptime").textContent = formatUptime(uptimeSeconds);
+}).catch(() => {});
+
+setInterval(() => {
+  uptimeSeconds += 1;
+  document.getElementById("uptime").textContent = formatUptime(uptimeSeconds);
+}, 1000);
+
+// --- Subscribe to pushed events ---
+
+// CPU
+WidgetAPI.system.subscribe('cpu', (data) => {
+  const cpuPct = data.avg_usage;
+  const cpuTemp = data.cpu_temp != null ? data.cpu_temp : 0;
+  const cpuFreqMHz = data.frequency;
+  const cColor = getSeverityColor(cpuPct, cpuTemp);
+
+  document.getElementById("cpu-usage").textContent = `${cpuPct.toFixed(1)}%`;
+  document.getElementById("cpu-temp").textContent = `${cpuTemp.toFixed(0)}°C`;
+  document.getElementById("cpu-freq").textContent = `${toGHz(cpuFreqMHz)} GHz`;
+  document.querySelector("#cpu-section .stats-right").style.color = cColor;
+  cpuGraph.update(cpuPct, 100, cColor);
+});
+
+// Memory
+WidgetAPI.system.subscribe('memory', (data) => {
+  const ramUsed = data.used;
+  const ramTotal = data.total;
+  const ramPct = ramTotal > 0 ? (ramUsed / ramTotal) * 100 : 0;
+  const rColor = getSeverityColor(ramPct, 0);
+
+  document.getElementById("ram-percentage").textContent = `${ramPct.toFixed(1)}%`;
+  document.getElementById("ram-used").textContent = `${toGiB(ramUsed)}/${toGiB(ramTotal)} GiB`;
+  document.querySelector("#ram-section .stats-right").style.color = rColor;
+  ramGraph.update(ramPct, 100, rColor);
+});
+
+// GPU — null if no GPU detected
+WidgetAPI.system.subscribe('gpu', (data) => {
+  if (!data) return;
+  const vramPct = data.vram_percentage;
+  const gpuTemp = data.temp != null ? data.temp : 0;
+  const gColor = getSeverityColor(vramPct, gpuTemp);
+
+  document.getElementById("gpu-usage-pct").textContent = `${vramPct.toFixed(1)}%`;
+  document.getElementById("gpu-temp").textContent = `${gpuTemp.toFixed(0)}°C`;
+  document.getElementById("vram-info").textContent = `${toGiB(data.vram_used)}/${toGiB(data.vram_total)} GiB`;
+  document.querySelector("#gpu-section .stats-right").style.color = gColor;
+  gpuGraph.update(vramPct, 100, gColor);
+});
+
+// Network — broadcaster emits an array of per-interface objects; sum across all.
+WidgetAPI.system.subscribe('network', (data) => {
+  const interfaces = Array.isArray(data) ? data : [data];
+  const netIn  = interfaces.reduce((sum, iface) => sum + (iface.received    || 0), 0);
+  const netOut = interfaces.reduce((sum, iface) => sum + (iface.transmitted || 0), 0);
+
+  document.getElementById("net-in").textContent  = `IN: ${fmtBS(netIn)}`;
+  document.getElementById("net-out").textContent = `OUT: ${fmtBS(netOut)}`;
+  netGraph.update(netIn + netOut, 1024 * 1024 * 2, state.theme.primary);
+});
+
+// Disk I/O — fields are `read` and `write` (optional u64, null on non-Linux)
+WidgetAPI.system.subscribe('disk-io', (data) => {
+  const diskRead  = data.read  != null ? data.read  : 0;
+  const diskWrite = data.write != null ? data.write : 0;
+
+  document.getElementById("disk-read").textContent  = `READ: ${fmtBS(diskRead)}`;
+  document.getElementById("disk-write").textContent = `WRITE: ${fmtBS(diskWrite)}`;
+  diskGraph.update(diskRead + diskWrite, 1024 * 1024 * 10, state.theme.primary);
+});
+
+// --- Mouse / spotlight effect ---
 const container = document.getElementById("main-container");
 window.addEventListener("mousemove", (e) => {
   const rect = container.getBoundingClientRect();
@@ -171,26 +211,23 @@ window.addEventListener("mousemove", (e) => {
   container.style.setProperty("--mouse-x", `${x}px`);
   container.style.setProperty("--mouse-y", `${y}px`);
   const buffer = 2;
-  const isInside = (e.clientX >= rect.left + buffer && e.clientX <= rect.right - buffer && e.clientY >= rect.top + buffer && e.clientY <= rect.bottom - buffer);
+  const isInside = (e.clientX >= rect.left + buffer && e.clientX <= rect.right - buffer &&
+                    e.clientY >= rect.top  + buffer && e.clientY <= rect.bottom - buffer);
   container.style.setProperty("--pattern-opacity", isInside ? "1" : "0");
 });
 
-// Improved Drag & Interaction Logic
+// --- Drag & Resize via WidgetAPI ---
 container.addEventListener("mousedown", (e) => {
   const target = e.target;
-  
-  // 1. Drag Trigger: If clicking background, pattern, header, or section text
-  // but NOT resizers or the settings title
   if (
-    target.id === "main-container" || 
-    target.id === "spotlight" || 
-    target.closest("header") || 
+    target.id === "main-container" ||
+    target.id === "spotlight" ||
+    target.closest("header") ||
     target.closest(".section-text") ||
     target.closest(".io-box")
   ) {
-    // Only drag if it's NOT the actual settings h1 or a resizer
     if (target.id !== "open-settings" && !target.classList.contains("resizer")) {
-      appWindow.startDragging();
+      WidgetAPI.widget.drag(e);
     }
   }
 });
@@ -199,14 +236,13 @@ document.querySelectorAll(".resizer").forEach(r => {
   r.onmousedown = (e) => {
     e.preventDefault(); e.stopPropagation();
     const dir = r.dataset.direction;
-    if (dir) appWindow.startResizeDragging(dir);
+    if (dir) WidgetAPI.widget.resize(dir);
   };
 });
 
+// --- Settings ---
 document.getElementById("open-settings").onclick = () => {
-  invoke("open_module_settings", { id: "system-stats" });
+  WidgetAPI.widget.openSettings();
 };
 
 applyState();
-setInterval(tick, 1000);
-tick();
