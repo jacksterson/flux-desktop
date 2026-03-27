@@ -68,6 +68,39 @@ pub struct ModuleManifest {
     pub active: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ThemeManifest {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_version_str")]
+    pub version: String,
+    pub modules: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+}
+
+fn default_version_str() -> String { "1.0.0".to_string() }
+
+#[derive(Debug, Serialize)]
+pub struct ModuleInfo {
+    pub id: String,
+    pub name: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThemeInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub preview_url: Option<String>,
+    pub modules: Vec<ModuleInfo>,
+    pub source: String, // "user" | "bundled"
+}
+
 // --- Window State Persistence ---
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct WindowBounds {
@@ -216,6 +249,73 @@ fn list_modules(app: AppHandle, state: State<'_, AppState>) -> Vec<ModuleManifes
     scan_modules_dir(&resource_dir.join("modules"), &active_ids, &mut seen_ids, &mut modules);
 
     modules
+}
+
+fn get_module_name_from_dir(module_dir: &std::path::Path) -> String {
+    let manifest_path = module_dir.join("module.json");
+    fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<ModuleManifest>(&s).ok())
+        .map(|m| m.name)
+        .unwrap_or_else(|| {
+            module_dir.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string()
+        })
+}
+
+fn scan_theme_dir(
+    themes_dir: &std::path::Path,
+    source: &str,
+    active: &HashMap<String, ModuleManifest>,
+    seen_ids: &mut HashSet<String>,
+    out: &mut Vec<ThemeInfo>,
+) {
+    let Ok(entries) = fs::read_dir(themes_dir) else { return };
+    for entry in entries.flatten() {
+        let theme_dir = entry.path();
+        let manifest_path = theme_dir.join("theme.json");
+        if !manifest_path.exists() { continue; }
+        let Ok(content) = fs::read_to_string(&manifest_path) else { continue };
+        let manifest: ThemeManifest = match serde_json::from_str(&content) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[flux] Warning: could not parse {}: {}", manifest_path.display(), e);
+                continue;
+            }
+        };
+        if !seen_ids.insert(manifest.id.clone()) { continue; }
+        let preview_url = manifest.preview.as_ref().map(|filename| {
+            format!("flux-module://_theme/{}/{}", manifest.id, filename)
+        });
+        let modules_dir = theme_dir.join("modules");
+        let modules = manifest.modules.iter().map(|mid| ModuleInfo {
+            id: mid.clone(),
+            name: get_module_name_from_dir(&modules_dir.join(mid)),
+            active: active.contains_key(mid),
+        }).collect();
+        out.push(ThemeInfo {
+            id: manifest.id,
+            name: manifest.name,
+            description: manifest.description,
+            version: manifest.version,
+            preview_url,
+            modules,
+            source: source.to_string(),
+        });
+    }
+}
+
+#[tauri::command]
+fn list_themes(state: State<'_, AppState>, app: AppHandle) -> Vec<ThemeInfo> {
+    let active = state.active_modules.lock().unwrap().clone();
+    let resource_dir = app.path().resource_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut themes: Vec<ThemeInfo> = Vec::new();
+    scan_theme_dir(&flux_user_themes_dir(), "user", &active, &mut seen, &mut themes);
+    scan_theme_dir(&resource_dir.join("themes"), "bundled", &active, &mut seen, &mut themes);
+    themes
 }
 
 fn track_window(window: WebviewWindow) {
@@ -917,5 +1017,30 @@ mod tests {
         set.insert("module-test".to_string());
         assert!(set.contains("module-test"));
         assert!(!set.contains("module-other"));
+    }
+
+    #[test]
+    fn list_themes_deduplication() {
+        use std::env::temp_dir;
+        let base = temp_dir().join("flux_list_themes_test");
+        let _ = std::fs::remove_dir_all(&base);
+        for dir_name in &["user_themes", "bundled_themes"] {
+            let theme_dir = base.join(dir_name).join("my-theme");
+            std::fs::create_dir_all(theme_dir.join("modules")).unwrap();
+            std::fs::write(
+                theme_dir.join("theme.json"),
+                r#"{"id":"my-theme","name":"My Theme","description":"","version":"1.0.0","modules":[]}"#,
+            ).unwrap();
+        }
+        let user_dir = base.join("user_themes");
+        let bundled_dir = base.join("bundled_themes");
+        let mut seen = std::collections::HashSet::new();
+        let active: HashMap<String, ModuleManifest> = HashMap::new();
+        let mut out = Vec::new();
+        scan_theme_dir(&user_dir, "user", &active, &mut seen, &mut out);
+        scan_theme_dir(&bundled_dir, "bundled", &active, &mut seen, &mut out);
+        assert_eq!(out.len(), 1, "duplicate theme ID should appear only once");
+        assert_eq!(out[0].source, "user", "user theme should win over bundled");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
