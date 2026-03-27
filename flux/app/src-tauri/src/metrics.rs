@@ -85,15 +85,21 @@ pub fn read_battery_linux() -> Option<BatteryInfo> {
     let entries = fs::read_dir(ps_path).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
-        let type_str = fs::read_to_string(path.join("type")).ok()?;
+        // Skip entries that don't have a "type" file or aren't batteries
+        let type_str = match fs::read_to_string(path.join("type")) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
         if type_str.trim() != "Battery" {
             continue;
         }
-        let capacity: f32 = fs::read_to_string(path.join("capacity"))
-            .ok()?
-            .trim()
-            .parse()
-            .ok()?;
+        let capacity: f32 = match fs::read_to_string(path.join("capacity"))
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+        {
+            Some(v) => v,
+            None => continue,
+        };
         let status = fs::read_to_string(path.join("status")).unwrap_or_default();
         let charging = matches!(status.trim(), "Charging" | "Full");
         return Some(BatteryInfo {
@@ -267,7 +273,8 @@ pub fn system_gpu(state: State<'_, AppState>) -> Option<GpuInfo> {
             .reduce(f32::max)
             .unwrap_or(0.0);
 
-        let mut best_vram = (0u64, 0u64);
+        let mut best_card: Option<usize> = None;
+        let mut best_vram = (0u64, 0u64); // (used, total)
         for i in 0..5 {
             let base = format!("/sys/class/drm/card{}/device", i);
             if let (Ok(t), Ok(u)) = (
@@ -278,23 +285,26 @@ pub fn system_gpu(state: State<'_, AppState>) -> Option<GpuInfo> {
                 let used:  u64 = u.trim().parse().unwrap_or(0);
                 if total > best_vram.1 {
                     best_vram = (used, total);
+                    best_card = Some(i);
                 }
             }
         }
-        if best_vram.1 > 0 {
-            let usage = (0..3).find_map(|i| {
-                let p = format!("/sys/class/drm/card{}/device/gpu_busy_percent", i);
-                fs::read_to_string(&p).ok()
-                    .and_then(|s| s.trim().parse::<u32>().ok())
-                    .filter(|&u| u > 0)
-            }).unwrap_or(0);
-            return Some(GpuInfo {
-                usage,
-                vram_used: best_vram.0,
-                vram_total: best_vram.1,
-                vram_percentage: (best_vram.0 as f32 / best_vram.1 as f32) * 100.0,
-                temp: gpu_temp,
-            });
+        if let Some(card_idx) = best_card {
+            if best_vram.1 > 0 {
+                let usage = {
+                    let p = format!("/sys/class/drm/card{}/device/gpu_busy_percent", card_idx);
+                    fs::read_to_string(&p).ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok())
+                        .unwrap_or(0)
+                };
+                return Some(GpuInfo {
+                    usage,
+                    vram_used: best_vram.0,
+                    vram_total: best_vram.1,
+                    vram_percentage: (best_vram.0 as f32 / best_vram.1 as f32) * 100.0,
+                    temp: gpu_temp,
+                });
+            }
         }
     }
 
