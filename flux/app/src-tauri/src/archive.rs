@@ -1,6 +1,9 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static EXTRACT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub enum ArchiveKind {
     Zip,
@@ -28,7 +31,8 @@ pub fn extract_to_temp(path: &Path) -> Result<PathBuf, String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let dest = std::env::temp_dir().join(format!("flux-extract-{}-{}", ts, std::process::id()));
+    let counter = EXTRACT_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let dest = std::env::temp_dir().join(format!("flux-extract-{}-{}-{}", ts, std::process::id(), counter));
     fs::create_dir_all(&dest).map_err(|e| format!("Could not create temp dir: {}", e))?;
     match kind {
         ArchiveKind::Zip => extract_zip(path, &dest),
