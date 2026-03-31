@@ -1,3 +1,6 @@
+import { ComponentStore, HistoryStack, COMPONENT_TYPES, SOURCE_EVENTS, DATA_SOURCES, PRESETS } from './store.js';
+import { renderPalettePanel, setPaletteChangeCallback, resolveColor, paletteSwatchesHtml, serializePalette, deserializePalette, generatePaletteCSS } from './palette.js';
+
 if (!window.__TAURI__) {
   document.getElementById('canvas').innerHTML =
     '<p style="padding:20px;color:#c00">Tauri IPC not available.</p>';
@@ -10,197 +13,56 @@ const canvas = document.getElementById('canvas');
 const canvasWidth = document.getElementById('canvas-width');
 const canvasHeight = document.getElementById('canvas-height');
 
-// ── Presets and theming ───────────────────────────────────────────────────────
-
-const PRESETS = {
-    'preset-ds': { bg: '#0A0F1A', primary: '#00BFFF', name: 'Death Stranding HUD' },
-    'preset-md': { bg: '#111111', primary: '#EEEEEE', name: 'Minimal Dark' },
-    'preset-ml': { bg: '#F5F5F5', primary: '#222222', name: 'Minimal Light' },
-};
-
 let defaultColor = '#00bfff'; // Updated by preset system; used as default for NEW components
-
-// ── ComponentStore ────────────────────────────────────────────────────────────
-
-class ComponentStore {
-    constructor() {
-        this._components = []; // [{id, type, x, y, width, height, opacity, visible, zIndex, props}]
-        this._nextZ = 0;
-    }
-
-    _genId() {
-        return 'c_' + Math.random().toString(36).slice(2, 10);
-    }
-
-    add(type, props = {}) {
-        const defaults = {
-            text:         { content: 'Text', fontSize: 16, color: defaultColor, fontFamily: 'monospace', fontWeight: 'normal', textAlign: 'left', letterSpacing: 0 },
-            metric:       { source: 'cpu_avg', label: '', suffix: '%', fontSize: 28, color: defaultColor, fontFamily: 'monospace', decimalPlaces: 1 },
-            progressbar:  { source: 'cpu_avg', orientation: 'horizontal', fgColor: defaultColor, bgColor: '#1e1e1e', borderRadius: 2 },
-            linegraph:    { source: 'cpu_avg', lineColor: defaultColor, fillColor: 'rgba(0,191,255,0.15)', maxPoints: 60, showBaseline: false },
-            circlemeter:  { source: 'cpu_avg', color: defaultColor, trackColor: '#1e1e1e', strokeWidth: 6, startAngle: -90, showValue: true, fontSize: 14, valueColor: '#ffffff' },
-            clock:        { format: 'HH:mm:ss', timezone: 'local', fontSize: 24, color: defaultColor, fontFamily: 'monospace' },
-            divider:      { orientation: 'horizontal', color: '#333333', thickness: 1, margin: 4 },
-        };
-        const component = {
-            id: this._genId(),
-            type,
-            x: 20, y: 20,
-            width:  type === 'divider' ? 200 : (type === 'progressbar' ? 180 : (type === 'linegraph' || type === 'circlemeter' ? 120 : 120)),
-            height: type === 'divider' ? 2   : (type === 'progressbar' ? 16  : (type === 'linegraph' || type === 'circlemeter' ? 80  : 40)),
-            opacity: 100,
-            visible: true,
-            zIndex: this._nextZ++,
-            props: Object.assign({}, defaults[type] || {}, props),
-        };
-        this._components.push(component);
-        return component;
-    }
-
-    remove(id) {
-        this._components = this._components.filter(c => c.id !== id);
-    }
-
-    update(id, changes) {
-        const c = this._components.find(c => c.id === id);
-        if (c) Object.assign(c, changes);
-    }
-
-    updateProps(id, propChanges) {
-        const c = this._components.find(c => c.id === id);
-        if (c) Object.assign(c.props, propChanges);
-    }
-
-    getAll() {
-        return [...this._components].sort((a, b) => a.zIndex - b.zIndex);
-    }
-
-    getById(id) {
-        return this._components.find(c => c.id === id) || null;
-    }
-
-    serialize() {
-        return JSON.stringify({
-            version: 1,
-            meta: { name: '', moduleId: '' },
-            canvas: {
-                width: parseInt(document.getElementById('canvas-width').value),
-                height: parseInt(document.getElementById('canvas-height').value),
-                background: document.getElementById('canvas').style.backgroundColor || '#0A0F1A',
-            },
-            components: this._components,
-        });
-    }
-
-    deserialize(json) {
-        const data = JSON.parse(json);
-        this._components = data.components || [];
-        this._nextZ = this._components.reduce((m, c) => Math.max(m, c.zIndex + 1), 0);
-        if (data.canvas) {
-            document.getElementById('canvas-width').value = data.canvas.width;
-            document.getElementById('canvas-height').value = data.canvas.height;
-            document.getElementById('canvas').style.backgroundColor = data.canvas.background;
-            updateCanvasSize();
-        }
-    }
-}
-
-// ── HistoryStack ──────────────────────────────────────────────────────────────
-
-class HistoryStack {
-    constructor(maxStates = 50) {
-        this._stack = [];
-        this._ptr = -1;
-        this._max = maxStates;
-    }
-
-    push(snapshot) {
-        // Discard any redo states above the pointer
-        this._stack = this._stack.slice(0, this._ptr + 1);
-        this._stack.push(snapshot);
-        if (this._stack.length > this._max) {
-            this._stack.shift();
-        } else {
-            this._ptr++;
-        }
-    }
-
-    undo() {
-        if (this._ptr <= 0) return null;
-        this._ptr--;
-        return this._stack[this._ptr];
-    }
-
-    redo() {
-        if (this._ptr >= this._stack.length - 1) return null;
-        this._ptr++;
-        return this._stack[this._ptr];
-    }
-
-    canUndo() { return this._ptr > 0; }
-    canRedo() { return this._ptr < this._stack.length - 1; }
-}
-
-// ── Component type definitions ────────────────────────────────────────────────
-
-const COMPONENT_TYPES = [
-    { type: 'text',        label: 'Text',         icon: 'T'  },
-    { type: 'metric',      label: 'Metric',        icon: '#'  },
-    { type: 'progressbar', label: 'Progress Bar',  icon: '▬'  },
-    { type: 'linegraph',   label: 'Line Graph',    icon: '📈' },
-    { type: 'circlemeter', label: 'Circle Meter',  icon: '○'  },
-    { type: 'clock',       label: 'Clock',         icon: '🕐' },
-    { type: 'divider',     label: 'Divider',       icon: '—'  },
-];
-
-// ── Live data source → event mapping ─────────────────────────────────────────
-
-const SOURCE_EVENTS = {
-    cpu_avg:        'system:cpu',
-    cpu_temp:       'system:cpu',
-    ram_pct:        'system:memory',
-    ram_used_gb:    'system:memory',
-    gpu_pct:        'system:gpu',
-    gpu_temp:       'system:gpu',
-    vram_pct:       'system:gpu',
-    net_in_kbps:    'system:network',
-    net_out_kbps:   'system:network',
-    disk_read_mbps: 'system:disk-io',
-    disk_write_mbps:'system:disk-io',
-    battery_pct:    'system:battery',
-};
-
-const DATA_SOURCES = [
-    { key: 'cpu_avg',         label: 'CPU Usage %' },
-    { key: 'cpu_temp',        label: 'CPU Temp °C' },
-    { key: 'ram_pct',         label: 'RAM Usage %' },
-    { key: 'ram_used_gb',     label: 'RAM Used GB' },
-    { key: 'gpu_pct',         label: 'GPU Usage %' },
-    { key: 'gpu_temp',        label: 'GPU Temp °C' },
-    { key: 'vram_pct',        label: 'VRAM Usage %' },
-    { key: 'net_in_kbps',     label: 'Network In KB/s' },
-    { key: 'net_out_kbps',    label: 'Network Out KB/s' },
-    { key: 'disk_read_mbps',  label: 'Disk Read MB/s' },
-    { key: 'disk_write_mbps', label: 'Disk Write MB/s' },
-    { key: 'battery_pct',     label: 'Battery %' },
-];
 
 let _liveUnsubs = [];
 const _lgHistory = {};
+let _latestData = {};
+
+function renderTemplate(tpl) {
+    return tpl.replace(/{{(.*?)}}/g, (match, key) => {
+        key = key.trim();
+        if (key === 'time') return formatClock('HH:mm:ss', 'local');
+        if (key === 'date') return new Date().toLocaleDateString();
+        if (_latestData[key] !== undefined) {
+            const val = parseFloat(_latestData[key]);
+            if (!isNaN(val)) return val.toFixed(1);
+            return _latestData[key];
+        }
+        return '--';
+    });
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const store = new ComponentStore();
-let activeId = null;
+let selectedIds = new Set();
+let primaryId = null;
 const history = new HistoryStack();
 let currentFilePath = null; // null means unsaved
 
+function getAppState() {
+    const data = JSON.parse(store.serialize());
+    data.palette = serializePalette();
+    return JSON.stringify(data);
+}
+
+function setAppState(json) {
+    const data = JSON.parse(json);
+    store.deserialize(json, updateCanvasSize);
+    if (data.palette) {
+        deserializePalette(data.palette);
+        renderPalettePanel();
+    }
+}
+
 function pushHistory() {
-    history.push(store.serialize());
+    history.push(getAppState());
 }
 
 // Single drag/resize state object
 const _drag = { type: null, compId: null, ox: 0, oy: 0, startX: 0, startY: 0, startCompX: 0, startCompY: 0, startW: 0, startH: 0, handle: null };
+
 
 // ── Snap helper ───────────────────────────────────────────────────────────────
 
@@ -217,10 +79,17 @@ function onDragMove(e) {
     if (!c) { _drag.type = null; return; }
 
     if (_drag.type === 'move') {
-        c.x = snapVal(e.clientX - _drag.ox);
-        c.y = snapVal(e.clientY - _drag.oy);
+        const dx = e.clientX - _drag.startX;
+        const dy = e.clientY - _drag.startY;
+        for (const [id, orig] of Object.entries(_drag.originals)) {
+            let tx = orig.x + dx, ty = orig.y + dy;
+            if (document.getElementById('btn-snap').classList.contains('active')) {
+                tx = Math.round(tx / 8) * 8; ty = Math.round(ty / 8) * 8;
+            }
+            store.update(id, { x: tx, y: ty });
+        }
         renderCanvas();
-    } else if (_drag.type === 'resize') {
+    } else if (_drag.type === 'resize' || _drag.type === 'group-resize') {
         const dx = e.clientX - _drag.startX;
         const dy = e.clientY - _drag.startY;
         let nx = _drag.startCompX, ny = _drag.startCompY, nw = _drag.startW, nh = _drag.startH;
@@ -229,7 +98,23 @@ function onDragMove(e) {
         if (h.includes('s')) nh = Math.max(10, snapVal(_drag.startH + dy));
         if (h.includes('w')) { nw = Math.max(20, snapVal(_drag.startW - dx)); nx = snapVal(_drag.startCompX + dx); }
         if (h.includes('n')) { nh = Math.max(10, snapVal(_drag.startH - dy)); ny = snapVal(_drag.startCompY + dy); }
-        store.update(c.id, { x: nx, y: ny, width: nw, height: nh });
+        
+        if (_drag.type === 'resize') {
+            store.update(_drag.compId, { x: nx, y: ny, width: nw, height: nh });
+        } else {
+            const scaleX = nw / _drag.startW;
+            const scaleY = nh / _drag.startH;
+            for (const [id, orig] of Object.entries(_drag.originals)) {
+                const ox = orig.x - _drag.startCompX;
+                const oy = orig.y - _drag.startCompY;
+                store.update(id, {
+                    x: Math.round(nx + ox * scaleX),
+                    y: Math.round(ny + oy * scaleY),
+                    width: Math.max(10, Math.round(orig.w * scaleX)),
+                    height: Math.max(10, Math.round(orig.h * scaleY))
+                });
+            }
+        }
         renderCanvas();
     }
 }
@@ -262,8 +147,8 @@ function renderCanvas() {
             box-sizing:border-box;
             overflow:hidden;
         `;
-        if (activeId === comp.id) {
-            el.style.outline = '2px solid #00bfff';
+        if (selectedIds.has(comp.id)) {
+            el.style.outline = primaryId === comp.id ? '2px solid #00bfff' : '2px dashed #00bfff';
             el.style.outlineOffset = '1px';
             el.style.overflow = 'visible';
         }
@@ -272,17 +157,27 @@ function renderCanvas() {
         // Component drag (move)
         el.addEventListener('mousedown', e => {
             if (e.target.classList.contains('resize-handle')) return;
-            selectComponent(comp.id);
+            if (!selectedIds.has(comp.id)) {
+                selectComponent(comp.id, e.ctrlKey || e.metaKey);
+            } else if (e.ctrlKey || e.metaKey) {
+                selectComponent(comp.id, true);
+                e.stopPropagation(); e.preventDefault();
+                return;
+            }
             _drag.type = 'move';
-            _drag.compId = comp.id;
-            _drag.ox = e.clientX - comp.x;
-            _drag.oy = e.clientY - comp.y;
+            _drag.startX = e.clientX;
+            _drag.startY = e.clientY;
+            _drag.originals = {};
+            for (const id of selectedIds) {
+                const c = store.getById(id);
+                if (c) _drag.originals[id] = { x: c.x, y: c.y, w: c.width, h: c.height };
+            }
             e.stopPropagation();
             e.preventDefault();
         });
 
-        // Resize handles (active component only)
-        if (comp.id === activeId) {
+        // Resize handles (single active component)
+        if (selectedIds.size === 1 && comp.id === primaryId) {
             const handleDirs = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
             for (const dir of handleDirs) {
                 const h = document.createElement('div');
@@ -317,13 +212,19 @@ function renderComponentContent(el, comp) {
         case 'text':
             el.style.fontFamily = p.fontFamily;
             el.style.fontSize = p.fontSize + 'px';
-            el.style.color = p.color;
+            el.style.color = resolveColor(p.color);
             el.style.fontWeight = p.fontWeight;
             el.style.textAlign = p.textAlign;
             el.style.letterSpacing = p.letterSpacing + 'px';
             el.style.display = 'flex';
             el.style.alignItems = 'center';
-            el.textContent = p.content;
+            if (p.content && p.content.includes('{{')) {
+                el.dataset.template = p.content;
+                el.textContent = renderTemplate(p.content);
+            } else {
+                delete el.dataset.template;
+                el.textContent = p.content;
+            }
             break;
         case 'metric':
             el.style.display = 'flex';
@@ -331,15 +232,15 @@ function renderComponentContent(el, comp) {
             el.style.justifyContent = 'center';
             el.innerHTML = `
                 ${p.label ? `<div style="font-size:10px;color:#888;font-family:monospace;">${escHtml(p.label)}</div>` : ''}
-                <div style="font-size:${p.fontSize}px;color:${p.color};font-family:${p.fontFamily};font-weight:bold;">
+                <div style="font-size:${p.fontSize}px;color:${resolveColor(p.color)};font-family:${p.fontFamily};font-weight:bold;">
                     <span class="live-value" data-source="${escHtml(String(p.source))}">--</span>${escHtml(p.suffix)}
                 </div>`;
             break;
         case 'progressbar':
-            el.style.background = p.bgColor;
+            el.style.background = resolveColor(p.bgColor);
             el.style.borderRadius = p.borderRadius + 'px';
             el.innerHTML = `<div class="pb-fill" data-source="${escHtml(String(p.source))}" style="
-                height:100%; width:0%; background:${p.fgColor};
+                height:100%; width:0%; background:${resolveColor(p.fgColor)};
                 border-radius:${p.borderRadius}px; transition:width 0.3s;
             "></div>`;
             break;
@@ -355,15 +256,15 @@ function renderComponentContent(el, comp) {
             el.style.justifyContent = 'center';
             el.style.fontFamily = p.fontFamily;
             el.style.fontSize = p.fontSize + 'px';
-            el.style.color = p.color;
+            el.style.color = resolveColor(p.color);
             el.innerHTML = `<span class="clock-display" data-format="${escHtml(p.format)}" data-tz="${escHtml(p.timezone)}">--:--</span>`;
             break;
         case 'divider':
             if (p.orientation === 'horizontal') {
-                el.style.borderTop = `${p.thickness}px solid ${p.color}`;
+                el.style.borderTop = `${p.thickness}px solid ${resolveColor(p.color)}`;
                 el.style.margin = `${p.margin}px 0`;
             } else {
-                el.style.borderLeft = `${p.thickness}px solid ${p.color}`;
+                el.style.borderLeft = `${p.thickness}px solid ${resolveColor(p.color)}`;
                 el.style.margin = `0 ${p.margin}px`;
             }
             break;
@@ -374,8 +275,20 @@ function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function selectComponent(id) {
-    activeId = id;
+function selectComponent(id, keepExisting = false) {
+    if (id) {
+        if (!keepExisting) selectedIds.clear();
+        if (selectedIds.has(id) && keepExisting) {
+            selectedIds.delete(id);
+            if (primaryId === id) primaryId = [...selectedIds][0] || null;
+        } else {
+            selectedIds.add(id);
+            primaryId = id;
+        }
+    } else {
+        selectedIds.clear();
+        primaryId = null;
+    }
     renderCanvas();
     renderProperties();
     renderLayers();
@@ -396,7 +309,7 @@ function renderComponentsPanel() {
             const canvasEl = document.getElementById('canvas');
             const cx = Math.max(0, Math.floor((parseInt(canvasEl.style.width) || 400) / 2) - 60);
             const cy = Math.max(0, Math.floor((parseInt(canvasEl.style.height) || 300) / 2) - 20);
-            const comp = store.add(type);
+            const comp = store.add(type, {}, defaultColor);
             store.update(comp.id, { x: cx, y: cy });
             selectComponent(comp.id);
             pushHistory();
@@ -424,6 +337,17 @@ function setupLiveData() {
         const src = comp.props && comp.props.source;
         if (src && SOURCE_EVENTS[src]) neededEvents.add(SOURCE_EVENTS[src]);
         if (comp.type === 'clock') neededEvents.add('clock-tick');
+        
+        if (comp.type === 'text' && comp.props.content) {
+            const matches = comp.props.content.match(/{{(.*?)}}/g);
+            if (matches) {
+                for (const m of matches) {
+                    const key = m.slice(2, -2).trim();
+                    if (SOURCE_EVENTS[key]) neededEvents.add(SOURCE_EVENTS[key]);
+                    if (key === 'time' || key === 'date') neededEvents.add('clock-tick');
+                }
+            }
+        }
     }
 
     for (const event of neededEvents) {
@@ -443,11 +367,23 @@ function setupLiveData() {
             const tz = el.dataset.tz || 'local';
             el.textContent = formatClock(fmt, tz);
         });
+        document.querySelectorAll('.comp[data-template]').forEach(el => {
+            if (el.dataset.template.includes('{{time}}') || el.dataset.template.includes('{{date}}')) {
+                el.textContent = renderTemplate(el.dataset.template);
+            }
+        });
     }, 1000);
     _liveUnsubs.push(() => clearInterval(clockInterval));
 }
 
 function updateLiveElements(data) {
+    Object.assign(_latestData, data);
+
+    // Update text component templates
+    document.querySelectorAll('.comp[data-template]').forEach(el => {
+        el.textContent = renderTemplate(el.dataset.template);
+    });
+
     // Update .live-value spans
     document.querySelectorAll('.live-value[data-source]').forEach(el => {
         const src = el.dataset.source;
@@ -508,14 +444,14 @@ function drawLineGraph(canvasEl, value) {
     const max = Math.max(...hist, 1);
     const pts = hist.map((v, i) => [i / (hist.length - 1) * w, h - (v / max) * (h - 2) - 1]);
 
-    ctx.strokeStyle = comp.props.lineColor || '#00bfff';
+    ctx.strokeStyle = resolveColor(comp.props.lineColor) || '#00bfff';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
     ctx.stroke();
 
     if (comp.props.fillColor) {
-        ctx.fillStyle = comp.props.fillColor;
+        ctx.fillStyle = resolveColor(comp.props.fillColor);
         ctx.beginPath();
         pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
         ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
@@ -539,21 +475,21 @@ function drawCircleMeter(canvasEl, value) {
     ctx.clearRect(0, 0, w, h);
 
     // Track
-    ctx.strokeStyle = comp.props.trackColor || '#1e1e1e';
+    ctx.strokeStyle = resolveColor(comp.props.trackColor) || '#1e1e1e';
     ctx.lineWidth = comp.props.strokeWidth || 6;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, 2 * Math.PI);
     ctx.stroke();
 
     // Fill
-    ctx.strokeStyle = comp.props.color || '#00bfff';
+    ctx.strokeStyle = resolveColor(comp.props.color) || '#00bfff';
     ctx.beginPath();
     ctx.arc(cx, cy, r, startDeg, startDeg + pct * 2 * Math.PI);
     ctx.stroke();
 
     // Value label
     if (comp.props.showValue) {
-        ctx.fillStyle = comp.props.valueColor || '#fff';
+        ctx.fillStyle = resolveColor(comp.props.valueColor) || '#fff';
         ctx.font = `${comp.props.fontSize || 14}px monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -575,7 +511,9 @@ function propText(label, key, val) {
     return propRow(label, `<input class="prop-input" type="text" data-prop="${escHtml(key)}" value="${escHtml(String(val))}">`);
 }
 function propColor(label, key, val) {
-    return propRow(label, `<input class="prop-input" type="color" data-prop="${escHtml(key)}" value="${escHtml(String(val))}">`);
+    const resolved = resolveColor(val);
+    const swatches = paletteSwatchesHtml(val);
+    return propRow(label, `${swatches}<input class="prop-input" type="color" data-prop="${escHtml(key)}" value="${escHtml(String(resolved))}">`);  
 }
 function propRange(label, key, val, min = 0, max = 100) {
     return propRow(label, `<input class="prop-input" type="range" data-prop="${escHtml(key)}" value="${escHtml(String(val))}" min="${min}" max="${max}">`);
@@ -615,17 +553,34 @@ function applyPropChange(comp, propPath, rawValue) {
 
 function renderProperties() {
     const container = document.getElementById('properties-content');
-    if (!activeId) {
-        container.innerHTML = '<p class="empty-state">Select a component to edit.</p>';
-        return;
-    }
-    const comp = store.getById(activeId);
-    if (!comp) {
+    if (selectedIds.size === 0) {
         container.innerHTML = '<p class="empty-state">Select a component to edit.</p>';
         return;
     }
 
     const fields = [];
+    if (selectedIds.size > 1) {
+        const opacs = [...selectedIds].map(id => store.getById(id)).filter(Boolean).map(c => c.opacity);
+        const avgO = opacs.length ? Math.round(opacs.reduce((a,b)=>a+b)/opacs.length) : 100;
+        fields.push(
+            `<div style="padding:12px 8px; font-weight:bold; color:#00bfff;">${selectedIds.size} components selected</div>`,
+            propRange('Group Opacity', 'opacity', avgO, 0, 100)
+        );
+        container.innerHTML = fields.join('');
+        container.querySelectorAll('.prop-input').forEach(input => {
+            input.addEventListener('input', e => {
+                if (e.target.dataset.path === 'opacity') {
+                    for (const id of selectedIds) store.update(id, { opacity: parseInt(e.target.value) });
+                    renderCanvas();
+                }
+            });
+            input.addEventListener('change', () => pushHistory());
+        });
+        return;
+    }
+
+    const comp = store.getById(primaryId);
+    if (!comp) return;
 
     // Common fields
     fields.push(
@@ -639,8 +594,10 @@ function renderProperties() {
     // Per-type fields
     switch (comp.type) {
         case 'text':
+            const availableKeys = DATA_SOURCES.map(d => `{{${d.key}}}`).join(', ') + ', {{time}}, {{date}}';
             fields.push(
                 propText(    'Content',        'props.content',      comp.props.content),
+                `<div style="font-size:10px; color:#888; padding:0 8px 8px; line-height:1.3;">Available keys:<br><span style="font-family:monospace;">${availableKeys}</span></div>`,
                 propNumber(  'Font Size',      'props.fontSize',     comp.props.fontSize, 6),
                 propColor(   'Color',          'props.color',        comp.props.color),
                 propSelect(  'Font Family',    'props.fontFamily',   comp.props.fontFamily, ['monospace','sans-serif','serif','cursive']),
@@ -718,6 +675,18 @@ function renderProperties() {
             applyPropChange(comp, input.dataset.prop, input.type === 'checkbox' ? input.checked : input.value);
         });
     });
+
+    // Wire palette swatch clicks (sets property to a palette variable reference)
+    container.querySelectorAll('.prop-palette-swatch').forEach(swatch => {
+        swatch.addEventListener('click', () => {
+            const varName = swatch.dataset.paletteVar;
+            const propInput = swatch.closest('.prop-row').querySelector('[data-prop]');
+            if (propInput) {
+                applyPropChange(comp, propInput.dataset.prop, { paletteVar: varName });
+                renderProperties();
+            }
+        });
+    });
 }
 
 function reorderLayer(draggedId, targetId) {
@@ -741,7 +710,7 @@ function renderLayers() {
 
     comps.forEach((comp, listIndex) => {
         const row = document.createElement('div');
-        row.className = 'layer-row' + (comp.id === activeId ? ' active' : '');
+        row.className = 'layer-row' + (selectedIds.has(comp.id) ? ' active' : '');
         row.dataset.id = comp.id;
         row.draggable = true;
 
@@ -811,7 +780,7 @@ updateCanvasSize();
 // ── Deselect on canvas background click ──────────────────────────────────────
 
 document.getElementById('canvas').addEventListener('mousedown', () => {
-    activeId = null;
+    selectedIds.clear(); primaryId = null;
     renderCanvas();
     renderProperties();
     renderLayers();
@@ -828,8 +797,8 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         const snap = history.redo();
         if (snap) {
-            store.deserialize(snap);
-            activeId = null;
+            setAppState(snap);
+            /* obsolete clear activeId */
             renderCanvas();
             renderLayers();
         }
@@ -841,8 +810,8 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         const snap = history.undo();
         if (snap) {
-            store.deserialize(snap);
-            activeId = null;
+            setAppState(snap);
+            /* obsolete clear activeId */
             renderCanvas();
             renderLayers();
         }
@@ -850,9 +819,10 @@ document.addEventListener('keydown', e => {
     }
 
     // Delete: Delete or Backspace
-    if ((e.key === 'Delete' || e.key === 'Backspace') && activeId) {
-        store.remove(activeId);
-        activeId = null;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
+        for (const id of selectedIds) store.remove(id);
+        selectedIds.clear();
+        primaryId = null;
         pushHistory();
         renderCanvas();
         renderLayers();
@@ -894,9 +864,9 @@ function showToast(message, type = 'info') {
 
 async function cmdNew() {
     // TODO: could prompt to save if dirty — for now just clear
-    store.deserialize(JSON.stringify({ version: 1, meta: { name: '', moduleId: '' }, canvas: { width: 400, height: 300, background: '#0A0F1A' }, components: [] }));
+    setAppState(JSON.stringify({ version: 1, meta: { name: '', moduleId: '' }, canvas: { width: 400, height: 300, background: '#0A0F1A' }, components: [] }));
     currentFilePath = null;
-    activeId = null;
+    selectedIds.clear(); primaryId = null;
     history._stack = [];
     history._ptr = -1;
     pushHistory();
@@ -913,7 +883,7 @@ async function cmdOpen() {
         });
         if (!selected) return;
         const json = await invoke('load_fluxwidget', { path: selected });
-        store.deserialize(json);
+        setAppState(json);
         currentFilePath = selected;
         activeId = null;
         history._stack = [];
@@ -930,7 +900,7 @@ async function cmdOpen() {
 async function cmdSave() {
     if (!currentFilePath) return cmdSaveAs();
     try {
-        await invoke('save_fluxwidget', { path: currentFilePath, json: store.serialize() });
+        await invoke('save_fluxwidget', { path: currentFilePath, json: getAppState() });
         showToast('Saved.');
     } catch (e) {
         console.error('Save failed:', e);
@@ -946,7 +916,7 @@ async function cmdSaveAs() {
             defaultPath: 'my-widget.fluxwidget',
         });
         if (!path) return;
-        await invoke('save_fluxwidget', { path, json: store.serialize() });
+        await invoke('save_fluxwidget', { path, json: getAppState() });
         currentFilePath = path;
         showToast('Saved.');
     } catch (e) {
@@ -971,7 +941,7 @@ function cmdExport() {
     let modal = document.getElementById('export-modal');
     if (modal) modal.remove();
 
-    const data = JSON.parse(store.serialize());
+    const data = JSON.parse(getAppState());
     const defaultName = data.meta.name || 'My Widget';
     const defaultId   = slugify(defaultName);
 
@@ -1062,27 +1032,31 @@ function generateWidgetFiles(name, moduleId, width, height) {
         permissions,
     }, null, 2);
 
+    const cssVar = v => (v && v.paletteVar) ? `var(--${v.paletteVar})` : v;
+
     // style.css
     const cssRules = comps.map(c => {
         const p = c.props;
         let css = `#comp-${c.id} { position:absolute; left:${c.x}px; top:${c.y}px; width:${c.width}px; height:${c.height}px; opacity:${c.opacity/100}; z-index:${c.zIndex}; box-sizing:border-box; overflow:hidden; `;
         switch (c.type) {
             case 'text':
-                css += `font-size:${p.fontSize}px; color:${p.color}; font-family:${p.fontFamily}; font-weight:${p.fontWeight}; text-align:${p.textAlign}; letter-spacing:${p.letterSpacing}px; display:flex; align-items:center;`;
+                css += `font-size:${p.fontSize}px; color:${cssVar(p.color)}; font-family:${p.fontFamily}; font-weight:${p.fontWeight}; text-align:${p.textAlign}; letter-spacing:${p.letterSpacing}px; display:flex; align-items:center;`;
                 break;
             case 'metric':
                 css += `display:flex; flex-direction:column; justify-content:center;`;
                 break;
             case 'progressbar':
-                css += `background:${p.bgColor}; border-radius:${p.borderRadius}px;`;
+                css += `background:${cssVar(p.bgColor)}; border-radius:${p.borderRadius}px;`;
                 break;
             case 'clock':
-                css += `display:flex; align-items:center; justify-content:center; font-family:${p.fontFamily}; font-size:${p.fontSize}px; color:${p.color};`;
+                css += `display:flex; align-items:center; justify-content:center; font-family:${p.fontFamily}; font-size:${p.fontSize}px; color:${cssVar(p.color)};`;
                 break;
         }
         css += ' }';
         return css;
     }).join('\n');
+
+    const fullCss = generatePaletteCSS() + '\n\n' + cssRules;
 
     // index.html
     const compsHtml = comps.map(c => {
@@ -1093,10 +1067,10 @@ function generateWidgetFiles(name, moduleId, width, height) {
                 inner = escHtml(p.content);
                 break;
             case 'metric':
-                inner = `${p.label ? `<div style="font-size:10px;color:#888;">${escHtml(p.label)}</div>` : ''}<div id="val-${c.id}" style="font-size:${p.fontSize}px;color:${p.color};font-family:${p.fontFamily};font-weight:bold;">--${escHtml(p.suffix)}</div>`;
+                inner = `${p.label ? `<div style="font-size:10px;color:var(--muted,#888);">${escHtml(p.label)}</div>` : ''}<div id="val-${c.id}" style="font-size:${p.fontSize}px;color:${cssVar(p.color)};font-family:${p.fontFamily};font-weight:bold;">--${escHtml(p.suffix)}</div>`;
                 break;
             case 'progressbar':
-                inner = `<div id="pb-${c.id}" style="height:100%;width:0%;background:${p.fgColor};border-radius:${p.borderRadius}px;"></div>`;
+                inner = `<div id="pb-${c.id}" style="height:100%;width:0%;background:${cssVar(p.fgColor)};border-radius:${p.borderRadius}px;"></div>`;
                 break;
             case 'linegraph':
                 inner = `<canvas id="lg-${c.id}" width="${c.width}" height="${c.height}"></canvas>`;
@@ -1114,7 +1088,7 @@ function generateWidgetFiles(name, moduleId, width, height) {
         return `<div id="comp-${c.id}">${inner}</div>`;
     }).join('\n');
 
-    const canvasData = JSON.parse(store.serialize()).canvas;
+    const canvasData = JSON.parse(getAppState()).canvas;
     const indexHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -1131,39 +1105,82 @@ ${compsHtml}
     // logic.js
     const logicLines = [];
     logicLines.push(`const api = window.WidgetAPI;`);
+    logicLines.push(`const _latestData = {};`);
+
+    const textCompsWithTemplate = comps.filter(c => c.type === 'text' && c.props.content && c.props.content.includes('{{'));
+    const clockComps = comps.filter(c => c.type === 'clock');
+    const clockTextComps = [];
+
+    if (textCompsWithTemplate.length > 0 || clockComps.length > 0) {
+        logicLines.push(`function fmt(f, tz) { const n = tz==='local'?new Date():new Date(new Date().toLocaleString('en-US',{timeZone:tz})); const h24=n.getHours(),m=n.getMinutes(),s=n.getSeconds(),h12=h24%12||12,ap=h24<12?'AM':'PM',p=x=>String(x).padStart(2,'0'); return f.replace('HH',p(h24)).replace('mm',p(m)).replace('ss',p(s)).replace('hh',p(h12)).replace('A',ap); }`);
+    }
+
+    if (textCompsWithTemplate.length > 0) {
+        logicLines.push(`function renderTemplate(tpl) {
+    return tpl.replace(/{{(.*?)}}/g, (match, key) => {
+        key = key.trim();
+        if (key === 'time') return fmt('HH:mm:ss', 'local');
+        if (key === 'date') return new Date().toLocaleDateString();
+        if (_latestData[key] !== undefined) {
+            const val = parseFloat(_latestData[key]);
+            if (!isNaN(val)) return val.toFixed(1);
+            return _latestData[key];
+        }
+        return '--';
+    });
+}`);
+    }
 
     const eventToComps = {};
     for (const comp of comps) {
-        if (!comp.props || !comp.props.source) continue;
-        const ev = sourceEventMap[comp.props.source];
-        if (!ev) continue;
-        if (!eventToComps[ev]) eventToComps[ev] = [];
-        eventToComps[ev].push(comp);
+        if (comp.props && comp.props.source) {
+            const ev = sourceEventMap[comp.props.source];
+            if (ev) {
+                if (!eventToComps[ev]) eventToComps[ev] = [];
+                eventToComps[ev].push(comp);
+            }
+        }
+        
+        if (comp.type === 'text' && comp.props.content) {
+            const matches = comp.props.content.match(/{{(.*?)}}/g);
+            if (matches) {
+                for (const m of matches) {
+                    const key = m.slice(2, -2).trim();
+                    const ev = sourceEventMap[key];
+                    if (ev) {
+                        if (!eventToComps[ev]) eventToComps[ev] = [];
+                        if (!eventToComps[ev].includes(comp)) eventToComps[ev].push(comp);
+                    }
+                    if (key === 'time' || key === 'date') {
+                        if (!clockTextComps.includes(comp)) clockTextComps.push(comp);
+                    }
+                }
+            }
+        }
     }
 
     for (const [ev, evComps] of Object.entries(eventToComps)) {
         const body = evComps.map(comp => {
-            const src = comp.props.source;
-            switch (comp.type) {
-                case 'metric':
-                    return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id} && d['${src}'] !== undefined) el${comp.id}.textContent = parseFloat(d['${src}']).toFixed(${comp.props.decimalPlaces || 1}) + '${comp.props.suffix || ''}';`;
-                case 'progressbar':
-                    return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id} && d['${src}'] !== undefined) pb${comp.id}.style.width = Math.min(100,Math.max(0,parseFloat(d['${src}']))).toFixed(1) + '%';`;
-                default:
-                    return '';
+            if (comp.type === 'metric') {
+                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id} && d['${comp.props.source}'] !== undefined) el${comp.id}.textContent = parseFloat(d['${comp.props.source}']).toFixed(${comp.props.decimalPlaces || 1}) + '${comp.props.suffix || ''}';`;
+            } else if (comp.type === 'progressbar') {
+                return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id} && d['${comp.props.source}'] !== undefined) pb${comp.id}.style.width = Math.min(100,Math.max(0,parseFloat(d['${comp.props.source}']))).toFixed(1) + '%';`;
+            } else if (comp.type === 'text') {
+                return `  const txt${comp.id} = document.getElementById('comp-${comp.id}'); if (txt${comp.id}) txt${comp.id}.textContent = renderTemplate(\`${comp.props.content.replace(/`/g, '\\`')}\`);`;
             }
+            return '';
         }).filter(Boolean).join('\n');
+        
         if (body) {
-            logicLines.push(`api.system.subscribe('${ev}', d => {\n${body}\n});`);
+            logicLines.push(`api.system.subscribe('${ev}', d => {\n  Object.assign(_latestData, d);\n${body}\n});`);
         }
     }
 
-    const clockComps = comps.filter(c => c.type === 'clock');
-    if (clockComps.length > 0) {
-        const clockBody = clockComps.map(c => {
-            return `  const ck${c.id} = document.getElementById('clk-${c.id}'); if (ck${c.id}) ck${c.id}.textContent = fmt(ck${c.id}.dataset.format, ck${c.id}.dataset.tz);`;
-        }).join('\n');
-        logicLines.push(`function fmt(f, tz) { const n = tz==='local'?new Date():new Date(new Date().toLocaleString('en-US',{timeZone:tz})); const h24=n.getHours(),m=n.getMinutes(),s=n.getSeconds(),h12=h24%12||12,ap=h24<12?'AM':'PM',p=x=>String(x).padStart(2,'0'); return f.replace('HH',p(h24)).replace('mm',p(m)).replace('ss',p(s)).replace('hh',p(h12)).replace('A',ap); }`);
+    if (clockComps.length > 0 || clockTextComps.length > 0) {
+        let clockBody = clockComps.map(c => `  const ck${c.id} = document.getElementById('clk-${c.id}'); if (ck${c.id}) ck${c.id}.textContent = fmt(ck${c.id}.dataset.format, ck${c.id}.dataset.tz);`).join('\n');
+        if (clockTextComps.length > 0) {
+            clockBody += (clockBody ? '\n' : '') + clockTextComps.map(c => `  const txt${c.id} = document.getElementById('comp-${c.id}'); if (txt${c.id}) txt${c.id}.textContent = renderTemplate(\`${c.props.content.replace(/`/g, '\\`')}\`);`).join('\n');
+        }
         logicLines.push(`setInterval(()=>{\n${clockBody}\n}, 1000);`);
     }
 
@@ -1174,7 +1191,7 @@ ${compsHtml}
 
     return {
         'module.json': moduleJson,
-        'style.css': cssRules,
+        'style.css': fullCss,
         'index.html': indexHtml,
         'logic.js': logicJs,
     };
@@ -1199,7 +1216,7 @@ document.getElementById('preset-ml').addEventListener('click', () => applyPreset
 
 // ── Panel dragging and persistence ───────────────────────────────────────────
 
-const PANEL_IDS = ['panel-components', 'panel-properties', 'panel-layers'];
+const PANEL_IDS = ['panel-components', 'panel-properties', 'panel-layers', 'panel-palette'];
 
 function savePanelPositions() {
     const positions = {};
@@ -1266,7 +1283,14 @@ document.addEventListener('mousemove', onDragMove);
 document.addEventListener('mouseup',   onDragEnd);
 
 renderComponentsPanel();
+renderPalettePanel();
 renderCanvas();
+
+// Wire palette changes to re-render canvas
+setPaletteChangeCallback(() => {
+    renderCanvas();
+    renderProperties();
+});
 
 // Push initial state to history so undo from state 1 works
 pushHistory();
