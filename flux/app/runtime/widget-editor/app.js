@@ -885,7 +885,7 @@ async function cmdOpen() {
         const json = await invoke('load_fluxwidget', { path: selected });
         setAppState(json);
         currentFilePath = selected;
-        activeId = null;
+        selectedIds.clear(); primaryId = null;
         history._stack = [];
         history._ptr = -1;
         pushHistory();
