@@ -248,6 +248,50 @@ function renderCanvas() {
         canvasEl.appendChild(el);
     }
 
+    // Group resize overlay
+    const existingOverlay = canvasEl.querySelector('#group-resize-overlay');
+    if (existingOverlay) existingOverlay.remove();
+    if (selectedIds.size > 1) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const id of selectedIds) {
+            const c = store.getById(id);
+            if (!c) continue;
+            minX = Math.min(minX, c.x); minY = Math.min(minY, c.y);
+            maxX = Math.max(maxX, c.x + c.width); maxY = Math.max(maxY, c.y + c.height);
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'group-resize-overlay';
+        overlay.style.left = minX + 'px';
+        overlay.style.top = minY + 'px';
+        overlay.style.width = (maxX - minX) + 'px';
+        overlay.style.height = (maxY - minY) + 'px';
+        const handleDirs = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+        for (const dir of handleDirs) {
+            const h = document.createElement('div');
+            h.className = 'resize-handle rh-' + dir;
+            h.style.pointerEvents = 'auto';
+            h.addEventListener('mousedown', e => {
+                e.stopPropagation();
+                e.preventDefault();
+                _drag.type = 'group-resize';
+                _drag.handle = dir;
+                _drag.startX = e.clientX;
+                _drag.startY = e.clientY;
+                _drag.startCompX = minX;
+                _drag.startCompY = minY;
+                _drag.startW = maxX - minX;
+                _drag.startH = maxY - minY;
+                _drag.originals = {};
+                for (const id of selectedIds) {
+                    const c = store.getById(id);
+                    if (c) _drag.originals[id] = { x: c.x, y: c.y, w: c.width, h: c.height };
+                }
+            });
+            overlay.appendChild(h);
+        }
+        canvasEl.appendChild(overlay);
+    }
+
     setupLiveData();
 }
 

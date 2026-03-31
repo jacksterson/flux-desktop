@@ -533,3 +533,14 @@ input[type="range"].prop-input {
     pointer-events: none;
     z-index: 9999;
 }
+
+#group-resize-overlay {
+    position: absolute;
+    pointer-events: none;
+    z-index: 10000;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 191, 255, 0.5);
+}
+#group-resize-overlay .resize-handle {
+    pointer-events: auto;
+}
