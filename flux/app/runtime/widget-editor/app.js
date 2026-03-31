@@ -38,6 +38,7 @@ function renderTemplate(tpl) {
 const store = new ComponentStore();
 let selectedIds = new Set();
 let primaryId = null;
+let _selRect = null;
 const history = new HistoryStack();
 let currentFilePath = null; // null means unsaved
 
@@ -74,6 +75,22 @@ function snapVal(v) {
 // ── Drag/resize handlers ──────────────────────────────────────────────────────
 
 function onDragMove(e) {
+    if (_selRect) {
+        const canvas = document.getElementById('canvas');
+        const canvasRect = canvas.getBoundingClientRect();
+        const x = Math.min(e.clientX, _selRect.startX) - canvasRect.left;
+        const y = Math.min(e.clientY, _selRect.startY) - canvasRect.top;
+        const w = Math.abs(e.clientX - _selRect.startX);
+        const h = Math.abs(e.clientY - _selRect.startY);
+        const div = canvas.querySelector('.selection-rect');
+        if (div) {
+            div.style.left = x + 'px';
+            div.style.top = y + 'px';
+            div.style.width = w + 'px';
+            div.style.height = h + 'px';
+        }
+        return;
+    }
     if (!_drag.type) return;
     const c = store.getById(_drag.compId);
     if (!c) { _drag.type = null; return; }
@@ -120,6 +137,34 @@ function onDragMove(e) {
 }
 
 function onDragEnd() {
+    if (_selRect) {
+        const canvas = document.getElementById('canvas');
+        const selDiv = canvas.querySelector('.selection-rect');
+        if (selDiv) {
+            const selBounds = selDiv.getBoundingClientRect();
+            const comps = canvas.querySelectorAll('.comp');
+            let first = true;
+            comps.forEach(el => {
+                const compBounds = el.getBoundingClientRect();
+                const intersects = !(
+                    compBounds.right  < selBounds.left  ||
+                    compBounds.left   > selBounds.right ||
+                    compBounds.bottom < selBounds.top   ||
+                    compBounds.top    > selBounds.bottom
+                );
+                if (intersects && el.dataset.id) {
+                    selectedIds.add(el.dataset.id);
+                    if (first) { primaryId = el.dataset.id; first = false; }
+                }
+            });
+            selDiv.remove();
+        }
+        _selRect = null;
+        renderCanvas();
+        renderProperties();
+        renderLayers();
+        return;
+    }
     if (_drag.type) {
         pushHistory();
     }
@@ -779,8 +824,22 @@ updateCanvasSize();
 
 // ── Deselect on canvas background click ──────────────────────────────────────
 
-document.getElementById('canvas').addEventListener('mousedown', () => {
+document.getElementById('canvas').addEventListener('mousedown', e => {
+    // If clicking on a component or its child, let the component's own handler fire
+    if (e.target.closest('.comp')) return;
+
     selectedIds.clear(); primaryId = null;
+
+    // Start rubber-band selection
+    const canvas = document.getElementById('canvas');
+    const div = document.createElement('div');
+    div.className = 'selection-rect';
+    div.style.left = '0px'; div.style.top = '0px';
+    div.style.width = '0px'; div.style.height = '0px';
+    canvas.appendChild(div);
+    _selRect = { startX: e.clientX, startY: e.clientY };
+    e.stopPropagation();
+
     renderCanvas();
     renderProperties();
     renderLayers();
@@ -791,6 +850,16 @@ document.getElementById('canvas').addEventListener('mousedown', () => {
 document.addEventListener('keydown', e => {
     // Don't fire when typing in an input
     if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+    // Escape: clear selection
+    if (e.key === 'Escape') {
+        selectedIds.clear();
+        primaryId = null;
+        renderCanvas();
+        renderProperties();
+        renderLayers();
+        return;
+    }
 
     // Redo: Ctrl+Shift+Z
     if (e.ctrlKey && e.shiftKey && e.key === 'Z') {

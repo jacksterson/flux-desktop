@@ -83,24 +83,42 @@ label {
 
 #canvas-container {
     flex: 1;
-    overflow: auto;
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 24px;
-    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+    background: #0d1117;
 }
 
 #canvas {
-    position: relative;
+    position: absolute;
     background: #0A0F1A;
-    flex-shrink: 0;
+    transform-origin: 0 0;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
 }
 
 #canvas.show-grid {
     background-image:
         repeating-linear-gradient(0deg, transparent, transparent 7px, #ffffff0a 7px, #ffffff0a 8px),
         repeating-linear-gradient(90deg, transparent, transparent 7px, #ffffff0a 7px, #ffffff0a 8px);
+}
+
+#canvas-zoom-indicator {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #c9d1d9;
+    font-size: 13px;
+    font-family: monospace;
+    cursor: pointer;
+    user-select: none;
+    z-index: 100;
+}
+#canvas-zoom-indicator:hover {
+    background: #30363d;
+    color: #fff;
 }
 
 .panel {
@@ -351,3 +369,167 @@ input[type="range"].prop-input {
     cursor: pointer;
 }
 .btn-secondary:hover { background: #30363d; color: #fff; }
+
+/* ── Palette Panel ─────────────────────────────────────────────────────────── */
+
+.palette-warning {
+    background: #3a1d1d;
+    color: #ffb0b0;
+    border: 1px solid #f85149;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 10px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.palette-slot {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    padding: 6px;
+}
+
+.palette-slot-warn {
+    border-color: #f85149;
+}
+
+.palette-swatch-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.palette-swatch {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    background: none;
+}
+
+.palette-swatch::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.palette-swatch::-webkit-color-swatch {
+    border: 1px solid #444;
+    border-radius: 3px;
+}
+
+.palette-name {
+    flex: 1;
+    font-size: 11px;
+    font-weight: bold;
+    color: #c9d1d9;
+    cursor: text;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.palette-name-edit {
+    flex: 1;
+    background: #0d1117;
+    color: #fff;
+    border: 1px solid #00bfff;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-family: inherit;
+    width: 50px;
+}
+
+.palette-name-edit:focus {
+    outline: none;
+}
+
+.palette-hex {
+    font-size: 10px;
+    color: #8b949e;
+    font-family: monospace;
+}
+
+.palette-del {
+    background: none;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.palette-del:hover {
+    color: #f85149;
+}
+
+.palette-shades {
+    display: flex;
+    gap: 4px;
+}
+
+.shade-chip {
+    flex: 1;
+    height: 14px;
+    border-radius: 2px;
+    font-size: 9px;
+    line-height: 14px;
+    color: #000;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.palette-add-btn {
+    width: 100%;
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px dashed #30363d;
+    padding: 6px;
+    margin-top: 4px;
+    text-align: center;
+}
+
+.palette-add-btn:hover {
+    background: #30363d;
+    border-color: #8b949e;
+    color: #fff;
+}
+
+/* ── Properties Panel Palette Swatches ─────────────────────────────────────── */
+
+.prop-palette-swatches {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+    margin-right: 4px;
+}
+
+.prop-palette-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid #444;
+    cursor: pointer;
+}
+
+.prop-palette-swatch:hover {
+    border-color: #fff;
+}
+
+.prop-palette-swatch.active {
+    box-shadow: 0 0 0 1px #00bfff;
+    border-color: #fff;
+}
+
+.selection-rect {
+    position: absolute;
+    border: 1px dashed #00bfff;
+    background: rgba(0, 191, 255, 0.08);
+    pointer-events: none;
+    z-index: 9999;
+}
