@@ -189,7 +189,11 @@ function generateWidgetFiles(name, moduleId, width, height) {
         return css;
     }).join('\n');
 
-    const fullCss = generatePaletteCSS() + '\n\n' + cssRules;
+    const rawCssRules = comps
+        .filter(c => c.type === 'rawhtml' && c.props.css && c.props.css.trim())
+        .map(c => c.props.css.replace(/([^{}]+)\{/g, `#comp-${c.id} $1 {`))
+        .join('\n');
+    const fullCss = generatePaletteCSS() + '\n\n' + cssRules + (rawCssRules ? '\n\n/* Raw HTML component styles */\n' + rawCssRules : '');
 
     // index.html
     const compsHtml = comps.map(c => {
@@ -213,6 +217,9 @@ function generateWidgetFiles(name, moduleId, width, height) {
                 break;
             case 'clock':
                 inner = `<span id="clk-${c.id}" data-format="${_ctx.escHtml(p.format)}" data-tz="${_ctx.escHtml(p.timezone)}">--:--</span>`;
+                break;
+            case 'rawhtml':
+                inner = c.props.html || '';
                 break;
             case 'divider':
                 inner = '';

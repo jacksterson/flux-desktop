@@ -197,6 +197,23 @@ function renderComponentContent(el, comp) {
                 el.style.margin = `0 ${p.margin}px`;
             }
             break;
+        case 'rawhtml': {
+            // Inject scoped CSS if provided
+            if (p.css && p.css.trim()) {
+                const styleId = `rawhtml-style-${comp.id}`;
+                let styleEl = document.getElementById(styleId);
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = styleId;
+                    document.head.appendChild(styleEl);
+                }
+                // Scope all rules under the component's element
+                styleEl.textContent = p.css.replace(/([^{}]+)\{/g, `#comp-preview-${comp.id} $1 {`);
+            }
+            el.id = `comp-preview-${comp.id}`;
+            el.innerHTML = p.html || '';
+            break;
+        }
     }
 }
 
@@ -416,6 +433,14 @@ function renderProperties() {
                 propNumber(  'Margin',      'props.margin',      comp.props.margin, 0),
             );
             break;
+        case 'rawhtml':
+            fields.push(
+                `<div class="prop-label" style="padding:4px 8px 2px;">HTML</div>`,
+                `<div class="prop-row"><textarea class="prop-textarea" data-prop="props.html" rows="6">${escHtml(String(comp.props.html || ''))}</textarea></div>`,
+                `<div class="prop-label" style="padding:4px 8px 2px;">CSS (scoped to component)</div>`,
+                `<div class="prop-row"><textarea class="prop-textarea" data-prop="props.css" rows="4">${escHtml(String(comp.props.css || ''))}</textarea></div>`,
+            );
+            break;
     }
 
     container.innerHTML = fields.join('');
@@ -466,7 +491,7 @@ function renderLayers() {
         row.dataset.id = comp.id;
         row.draggable = true;
 
-        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—' };
+        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—', rawhtml:'</>' };
         const icon = typeIcons[comp.type] || '?';
         const label = comp.props.label || comp.props.content || comp.type;
 

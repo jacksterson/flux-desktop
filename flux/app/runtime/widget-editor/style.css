@@ -517,6 +517,26 @@ input[type="range"].prop-input {
     cursor: pointer;
 }
 
+/* ── Raw HTML Component ─────────────────────────────────────────────────────── */
+
+.prop-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: #1e1e1e;
+    color: #ccc;
+    border: 1px solid #333;
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-family: monospace;
+    font-size: 11px;
+    resize: vertical;
+    line-height: 1.4;
+}
+.prop-textarea:focus {
+    outline: 1px solid #00bfff;
+    border-color: #00bfff;
+}
+
 .prop-palette-swatch:hover {
     border-color: #fff;
 }
