@@ -32,6 +32,7 @@
 
   <div id="canvas-container">
     <div id="canvas"></div>
+    <div id="canvas-zoom-indicator" title="Reset Zoom/Pan (Ctrl+0)">100%</div>
   </div>
 
   <div class="panel" id="panel-components">
@@ -49,6 +50,11 @@
     <div class="panel-body" id="layers-list"></div>
   </div>
 
-  <script src="app.js"></script>
+  <div class="panel" id="panel-palette" style="left:10px; bottom:10px; top:auto; right:auto;">
+    <div class="panel-header">Palette</div>
+    <div class="panel-body" id="palette-body"></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
