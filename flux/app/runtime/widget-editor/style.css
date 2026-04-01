@@ -602,3 +602,9 @@ input[type="range"].prop-input {
 .effect-chip input[type="checkbox"] {
     display: none;
 }
+
+.shader-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}

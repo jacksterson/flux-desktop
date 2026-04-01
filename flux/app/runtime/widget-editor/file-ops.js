@@ -1,5 +1,6 @@
 import { generatePaletteCSS } from './palette.js';
 import { exportEffectsCss } from './effects.js';
+import { resolveShaderGlsl } from './shader.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -224,6 +225,9 @@ function generateWidgetFiles(name, moduleId, width, height) {
             case 'rawhtml':
                 inner = c.props.html || '';
                 break;
+            case 'shader':
+                inner = `<canvas id="sh-${c.id}" width="${c.width}" height="${c.height}" style="width:100%;height:100%;display:block;"></canvas>`;
+                break;
             case 'divider':
                 inner = '';
                 break;
@@ -325,6 +329,43 @@ ${compsHtml}
             clockBody += (clockBody ? '\n' : '') + clockTextComps.map(c => `  const txt${c.id} = document.getElementById('comp-${c.id}'); if (txt${c.id}) txt${c.id}.textContent = renderTemplate(\`${c.props.content.replace(/`/g, '\\`')}\`);`).join('\n');
         }
         logicLines.push(`setInterval(()=>{\n${clockBody}\n}, 1000);`);
+    }
+
+    const shaderComps = comps.filter(c => c.type === 'shader');
+    if (shaderComps.length > 0) {
+        // Embed GLSL and WebGL init code
+        logicLines.push(`// ── Shader components ──────────────────────────────────────────`);
+        for (const c of shaderComps) {
+            const glsl = resolveShaderGlsl(c).replace(/`/g, '\\`');
+            logicLines.push(`(function() {
+  const canvas = document.getElementById('sh-${c.id}');
+  if (!canvas) return;
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (!gl) return;
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, 'attribute vec2 a_position; void main(){gl_Position=vec4(a_position,0.,1.);}');
+  gl.compileShader(vs);
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, \`${glsl}\`);
+  gl.compileShader(fs);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+  const pos = gl.getAttribLocation(prog, 'a_position');
+  gl.enableVertexAttribArray(pos); gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+  const uT = gl.getUniformLocation(prog, 'u_time');
+  const uR = gl.getUniformLocation(prog, 'u_resolution');
+  const t0 = performance.now();
+  (function frame() {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform1f(uT, (performance.now()-t0)/1000);
+    gl.uniform2f(uR, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(frame);
+  })();
+})();`);
+        }
     }
 
     logicLines.push(`api.widget.enableDrag();`);

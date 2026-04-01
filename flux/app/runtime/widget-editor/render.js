@@ -1,6 +1,7 @@
 import { COMPONENT_TYPES, DATA_SOURCES } from './store.js';
 import { resolveColor, paletteSwatchesHtml } from './palette.js';
 import { applyEffects, effectsPropsHtml } from './effects.js';
+import { startShaderLoop, resolveShaderGlsl, SHADER_PRESETS, SHADER_PRESET_KEYS } from './shader.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -213,6 +214,10 @@ function renderComponentContent(el, comp) {
             }
             el.id = `comp-preview-${comp.id}`;
             el.innerHTML = p.html || '';
+            break;
+        }
+        case 'shader': {
+            el.innerHTML = `<canvas class="shader-canvas" width="${comp.width}" height="${comp.height}" style="width:100%;height:100%;display:block;"></canvas>`;
             break;
         }
     }
@@ -444,6 +449,24 @@ function renderProperties() {
                 `<div class="prop-row"><textarea class="prop-textarea" data-prop="props.css" rows="4">${escHtml(String(comp.props.css || ''))}</textarea></div>`,
             );
             break;
+        case 'shader': {
+            const presetOpts = SHADER_PRESET_KEYS.map(k =>
+                `<option value="${escHtml(k)}" ${k === comp.props.preset ? 'selected' : ''}>${escHtml(SHADER_PRESETS[k].label)}</option>`
+            ).join('');
+            fields.push(
+                propRow('Preset', `<select class="prop-input" data-prop="props.preset">
+                    ${presetOpts}
+                    <option value="custom" ${'custom' === comp.props.preset ? 'selected' : ''}>Custom GLSL</option>
+                </select>`),
+            );
+            if (comp.props.preset === 'custom') {
+                fields.push(
+                    `<div class="prop-label" style="padding:4px 8px 2px;">Fragment Shader (GLSL)</div>`,
+                    `<div class="prop-row"><textarea class="prop-textarea" data-prop="props.fragmentShader" rows="10">${escHtml(String(comp.props.fragmentShader || ''))}</textarea></div>`,
+                );
+            }
+            break;
+        }
     }
 
     // Effects section — shown for all single-component selections
@@ -510,7 +533,7 @@ function renderLayers() {
         row.dataset.id = comp.id;
         row.draggable = true;
 
-        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—', rawhtml:'</>' };
+        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—', rawhtml:'</>', shader:'◈' };
         const icon = typeIcons[comp.type] || '?';
         const label = comp.props.label || comp.props.content || comp.type;
 

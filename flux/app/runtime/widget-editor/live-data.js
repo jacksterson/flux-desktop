@@ -1,5 +1,6 @@
 import { SOURCE_EVENTS } from './store.js';
 import { resolveColor } from './palette.js';
+import { startShaderLoop, stopAllShaderLoops, resolveShaderGlsl } from './shader.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -23,6 +24,7 @@ function renderTemplate(tpl) {
 }
 
 function teardownLiveData() {
+    stopAllShaderLoops();
     for (const unsub of _liveUnsubs) { try { unsub(); } catch(e) {} }
     _liveUnsubs = [];
 }
@@ -74,6 +76,13 @@ function setupLiveData() {
         });
     }, 1000);
     _liveUnsubs.push(() => clearInterval(clockInterval));
+
+    // Start shader animation loops for all shader components
+    for (const comp of _ctx.store.getAll()) {
+        if (comp.type !== 'shader' || !comp.visible) continue;
+        const el = document.querySelector(`.comp[data-id="${comp.id}"] .shader-canvas`);
+        if (el) startShaderLoop(el, resolveShaderGlsl(comp));
+    }
 }
 
 function updateLiveElements(data) {

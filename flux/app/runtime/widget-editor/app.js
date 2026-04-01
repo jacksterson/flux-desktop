@@ -6,6 +6,7 @@ import { renderCanvas, renderComponentContent, escHtml, selectComponent,
 import { renderTemplate, setupLiveData, teardownLiveData, setContext as setLiveDataContext } from './live-data.js';
 import { cmdNew, cmdOpen, cmdSave, cmdSaveAs, cmdExport, setContext as setFileOpsContext } from './file-ops.js';
 import { setContext as setEffectsContext } from './effects.js';
+import { setContext as setShaderContext } from './shader.js';
 
 if (!window.__TAURI__) {
   document.getElementById('canvas').innerHTML =
@@ -88,6 +89,7 @@ setRenderContext(ctx);
 setLiveDataContext(ctx);
 setFileOpsContext(ctx);
 setEffectsContext(ctx);
+setShaderContext(ctx);
 
 // ── Drag/resize handlers ──────────────────────────────────────────────────────
 
