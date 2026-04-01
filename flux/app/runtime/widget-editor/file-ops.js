@@ -1,4 +1,5 @@
 import { generatePaletteCSS } from './palette.js';
+import { exportEffectsCss } from './effects.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -185,6 +186,8 @@ function generateWidgetFiles(name, moduleId, width, height) {
                 css += `display:flex; align-items:center; justify-content:center; font-family:${p.fontFamily}; font-size:${p.fontSize}px; color:${cssVar(p.color)};`;
                 break;
         }
+        const effectsCss = exportEffectsCss(c);
+        if (effectsCss) css += ' ' + effectsCss;
         css += ' }';
         return css;
     }).join('\n');

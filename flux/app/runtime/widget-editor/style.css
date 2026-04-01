@@ -564,3 +564,41 @@ input[type="range"].prop-input {
 #group-resize-overlay .resize-handle {
     pointer-events: auto;
 }
+
+.effects-section {
+    padding: 8px;
+    border-top: 1px solid #2a2a2a;
+    margin-top: 4px;
+}
+.effects-label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+.effects-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.effect-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    font-size: 10px;
+    color: #aaa;
+    cursor: pointer;
+    user-select: none;
+}
+.effect-chip.active {
+    border-color: #00bfff;
+    color: #00bfff;
+    background: rgba(0, 191, 255, 0.08);
+}
+.effect-chip input[type="checkbox"] {
+    display: none;
+}

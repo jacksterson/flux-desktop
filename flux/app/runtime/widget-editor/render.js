@@ -1,5 +1,6 @@
 import { COMPONENT_TYPES, DATA_SOURCES } from './store.js';
 import { resolveColor, paletteSwatchesHtml } from './palette.js';
+import { applyEffects, effectsPropsHtml } from './effects.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -215,6 +216,8 @@ function renderComponentContent(el, comp) {
             break;
         }
     }
+    // Apply CSS effect presets
+    applyEffects(el, comp);
 }
 
 function escHtml(s) {
@@ -443,6 +446,9 @@ function renderProperties() {
             break;
     }
 
+    // Effects section — shown for all single-component selections
+    fields.push(effectsPropsHtml(comp));
+
     container.innerHTML = fields.join('');
 
     // Wire up change events
@@ -450,6 +456,19 @@ function renderProperties() {
         const event = input.type === 'range' ? 'input' : 'change';
         input.addEventListener(event, () => {
             applyPropChange(comp, input.dataset.prop, input.type === 'checkbox' ? input.checked : input.value);
+        });
+    });
+
+    // Wire CSS effect toggles
+    container.querySelectorAll('.effect-toggle').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const current = new Set(comp.props.cssEffects || []);
+            if (cb.checked) current.add(cb.dataset.effect);
+            else current.delete(cb.dataset.effect);
+            _ctx.store.updateProps(comp.id, { cssEffects: [...current] });
+            _ctx.renderCanvas();
+            _ctx.pushHistory();
+            renderProperties(); // re-render to update chip active state
         });
     });
 

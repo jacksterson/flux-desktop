@@ -5,6 +5,7 @@ import { renderCanvas, renderComponentContent, escHtml, selectComponent,
          showToast, snapVal, setContext as setRenderContext } from './render.js';
 import { renderTemplate, setupLiveData, teardownLiveData, setContext as setLiveDataContext } from './live-data.js';
 import { cmdNew, cmdOpen, cmdSave, cmdSaveAs, cmdExport, setContext as setFileOpsContext } from './file-ops.js';
+import { setContext as setEffectsContext } from './effects.js';
 
 if (!window.__TAURI__) {
   document.getElementById('canvas').innerHTML =
@@ -71,6 +72,7 @@ const ctx = {
     get canvasWidth()    { return canvasWidth; },
     get canvasHeight()   { return canvasHeight; },
     getAppState, setAppState, pushHistory,
+    resolveColor:          (...a) => resolveColor(...a),
     renderCanvas:          (...a) => renderCanvas(...a),
     renderProperties:      (...a) => renderProperties(...a),
     renderLayers:          (...a) => renderLayers(...a),
@@ -85,6 +87,7 @@ const ctx = {
 setRenderContext(ctx);
 setLiveDataContext(ctx);
 setFileOpsContext(ctx);
+setEffectsContext(ctx);
 
 // ── Drag/resize handlers ──────────────────────────────────────────────────────
 

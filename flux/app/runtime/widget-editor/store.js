@@ -22,14 +22,14 @@ export class ComponentStore {
 
     add(type, props = {}, defaultColor = '#00bfff') {
         const defaults = {
-            text:         { content: 'Text', fontSize: 16, color: defaultColor, fontFamily: 'monospace', fontWeight: 'normal', textAlign: 'left', letterSpacing: 0 },
-            metric:       { source: 'cpu_avg', label: '', suffix: '%', fontSize: 28, color: defaultColor, fontFamily: 'monospace', decimalPlaces: 1 },
-            progressbar:  { source: 'cpu_avg', orientation: 'horizontal', fgColor: defaultColor, bgColor: '#1e1e1e', borderRadius: 2 },
-            linegraph:    { source: 'cpu_avg', lineColor: defaultColor, fillColor: 'rgba(0,191,255,0.15)', maxPoints: 60, showBaseline: false },
-            circlemeter:  { source: 'cpu_avg', color: defaultColor, trackColor: '#1e1e1e', strokeWidth: 6, startAngle: -90, showValue: true, fontSize: 14, valueColor: '#ffffff' },
-            clock:        { format: 'HH:mm:ss', timezone: 'local', fontSize: 24, color: defaultColor, fontFamily: 'monospace' },
-            divider:      { orientation: 'horizontal', color: '#333333', thickness: 1, margin: 4 },
-            rawhtml:      { html: '<div style="color:#00bfff;font-family:monospace;font-size:14px;">Hello World</div>', css: '' },
+            text:         { content: 'Text', fontSize: 16, color: defaultColor, fontFamily: 'monospace', fontWeight: 'normal', textAlign: 'left', letterSpacing: 0, cssEffects: [] },
+            metric:       { source: 'cpu_avg', label: '', suffix: '%', fontSize: 28, color: defaultColor, fontFamily: 'monospace', decimalPlaces: 1, cssEffects: [] },
+            progressbar:  { source: 'cpu_avg', orientation: 'horizontal', fgColor: defaultColor, bgColor: '#1e1e1e', borderRadius: 2, cssEffects: [] },
+            linegraph:    { source: 'cpu_avg', lineColor: defaultColor, fillColor: 'rgba(0,191,255,0.15)', maxPoints: 60, showBaseline: false, cssEffects: [] },
+            circlemeter:  { source: 'cpu_avg', color: defaultColor, trackColor: '#1e1e1e', strokeWidth: 6, startAngle: -90, showValue: true, fontSize: 14, valueColor: '#ffffff', cssEffects: [] },
+            clock:        { format: 'HH:mm:ss', timezone: 'local', fontSize: 24, color: defaultColor, fontFamily: 'monospace', cssEffects: [] },
+            divider:      { orientation: 'horizontal', color: '#333333', thickness: 1, margin: 4, cssEffects: [] },
+            rawhtml:      { html: '<div style="color:#00bfff;font-family:monospace;font-size:14px;">Hello World</div>', css: '', cssEffects: [] },
         };
         const component = {
             id: this._genId(),
