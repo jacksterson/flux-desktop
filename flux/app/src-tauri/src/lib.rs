@@ -9,6 +9,7 @@ mod archive;
 mod module_settings;
 mod autostart;
 pub mod custom_data;
+pub mod monitors;
 use custom_data::{CustomDataBroker, CustomSourceDef};
 use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir, flux_assets_category_dir};
 
