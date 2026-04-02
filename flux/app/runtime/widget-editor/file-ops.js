@@ -134,13 +134,14 @@ async function runExport(modal) {
     statusEl.style.display = 'block';
 
     const files = generateWidgetFiles(name, moduleId, width, height);
+    const assetRefs = collectAssetRefs(files);
 
     try {
         await _ctx.invoke('export_widget_package', {
             name,
             moduleId,
             filesJson: JSON.stringify(files),
-            assetRefsJson: '[]',
+            assetRefsJson: JSON.stringify(assetRefs),
         });
         modal.remove();
         _ctx.showToast('Widget installed \u2014 activate from Command Center', 'info');
@@ -148,6 +149,30 @@ async function runExport(modal) {
         statusEl.textContent = 'Export failed: ' + e;
         console.error('Export failed:', e);
     }
+}
+
+function collectAssetRefs(files) {
+    const refs = new Set();
+    const allText = Object.values(files).join('\n');
+
+    // flux://asset/<filename> references in HTML/CSS/JS
+    const assetPattern = /flux:\/\/asset\/([^"'\s)]+)/g;
+    let m;
+    while ((m = assetPattern.exec(allText)) !== null) {
+        const filename = m[1];
+        const category = /\.(ttf|otf|woff2?)$/i.test(filename) ? 'fonts'
+                       : /\.(png|jpe?g|svg|gif|webp)$/i.test(filename) ? 'images'
+                       : 'other';
+        refs.add(JSON.stringify({ category, filename }));
+    }
+
+    // @font-face src references added by @font-face generation
+    const fontSrcPattern = /url\(['"]?\.\/assets\/([^'")]+)['"]?\)/g;
+    while ((m = fontSrcPattern.exec(allText)) !== null) {
+        refs.add(JSON.stringify({ category: 'fonts', filename: m[1] }));
+    }
+
+    return [...refs].map(s => JSON.parse(s));
 }
 
 function generateWidgetFiles(name, moduleId, width, height) {
@@ -206,7 +231,24 @@ function generateWidgetFiles(name, moduleId, width, height) {
         .filter(c => c.type === 'rawhtml' && c.props.css && c.props.css.trim())
         .map(c => c.props.css.replace(/([^{}]+)\{/g, `#comp-${c.id} $1 {`))
         .join('\n');
-    const fullCss = generatePaletteCSS() + '\n\n' + cssRules + (rawCssRules ? '\n\n/* Raw HTML component styles */\n' + rawCssRules : '');
+    // Generate @font-face for any custom fonts used by components
+    const usedFonts = new Set(
+        comps
+            .filter(c => c.props && c.props.fontFamily)
+            .map(c => c.props.fontFamily)
+            .filter(f => !['monospace','sans-serif','serif','cursive','fantasy'].includes(f))
+    );
+    const fontFaceRules = [...usedFonts].map(name => {
+        const extensions = ['woff2', 'woff', 'otf', 'ttf'];
+        for (const ext of extensions) {
+            const filename = `${name}.${ext}`;
+            const format = ext === 'ttf' ? 'truetype' : ext === 'otf' ? 'opentype' : ext;
+            return `@font-face { font-family: '${name}'; src: url('./assets/${filename}') format('${format}'); }`;
+        }
+        return '';
+    }).filter(Boolean).join('\n');
+
+    const fullCss = (fontFaceRules ? fontFaceRules + '\n\n' : '') + generatePaletteCSS() + '\n\n' + cssRules + (rawCssRules ? '\n\n/* Raw HTML component styles */\n' + rawCssRules : '');
 
     // index.html
     const compsHtml = comps.map(c => {
@@ -257,6 +299,11 @@ ${compsHtml}
 <script src="logic.js"></script>
 </body>
 </html>`;
+
+    // Rewrite flux://asset/ → ./assets/ for exported widget
+    const rewriteAsset = s => s.replace(/flux:\/\/asset\//g, './assets/');
+    const exportedHtml = rewriteAsset(indexHtml);
+    const exportedCss  = rewriteAsset(fullCss);
 
     // logic.js
     const logicLines = [];
@@ -454,8 +501,8 @@ ${compsHtml}
 
     return {
         'module.json': moduleJson,
-        'style.css': fullCss,
-        'index.html': indexHtml,
+        'style.css': exportedCss,
+        'index.html': exportedHtml,
         'logic.js': logicJs,
     };
 }
