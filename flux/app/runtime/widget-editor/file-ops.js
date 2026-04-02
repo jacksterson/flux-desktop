@@ -332,15 +332,67 @@ ${compsHtml}
         if (customComps.length === 0) return;
         const body = customComps.map(comp => {
             if (comp.type === 'metric') {
-                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id}) el${comp.id}.textContent = val + '${comp.props.suffix || ''}';`;
+                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id}) el${comp.id}.textContent = parseFloat(val).toFixed(${comp.props.decimalPlaces !== undefined ? comp.props.decimalPlaces : 1}) + '${comp.props.suffix || ''}';`;
             } else if (comp.type === 'progressbar') {
                 return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id}) pb${comp.id}.style.width = Math.min(100,parseFloat(val)||0).toFixed(1) + '%';`;
+            } else if (comp.type === 'linegraph') {
+                return `  _drawLg_${comp.id}(parseFloat(val)||0);`;
+            } else if (comp.type === 'circlemeter') {
+                return `  _drawCm_${comp.id}(Math.min(100,Math.max(0,parseFloat(val)||0)));`;
             }
             return '';
         }).filter(Boolean).join('\n');
         if (body) {
             logicLines.push(`api.on('custom-data:${s.name}', val => {\n${body}\n});`);
         }
+
+        // Emit canvas drawing helpers for linegraph/circlemeter
+        customComps.filter(c => c.type === 'linegraph').forEach(comp => {
+            const maxPts = comp.props.maxPoints || 60;
+            const lineColor = comp.props.lineColor || '#00bfff';
+            const fillColor = comp.props.fillColor || '';
+            logicLines.push(`(function(){
+  var _hist_${comp.id}=[];
+  window._drawLg_${comp.id}=function(v){
+    _hist_${comp.id}.push(v);
+    if(_hist_${comp.id}.length>${maxPts})_hist_${comp.id}.shift();
+    var c=document.getElementById('lg-${comp.id}');
+    if(!c)return;
+    var ctx=c.getContext('2d'),w=c.width,h=c.height,hist=_hist_${comp.id};
+    ctx.clearRect(0,0,w,h);
+    if(hist.length<2)return;
+    var mx=Math.max.apply(null,hist.concat([1]));
+    var pts=hist.map(function(p,i){return[i/(hist.length-1)*w,h-(p/mx)*(h-2)-1];});
+    ctx.strokeStyle='${lineColor}';ctx.lineWidth=1.5;ctx.beginPath();
+    pts.forEach(function(p,i){i===0?ctx.moveTo(p[0],p[1]):ctx.lineTo(p[0],p[1]);});
+    ctx.stroke();
+    ${fillColor ? `ctx.fillStyle='${fillColor}';ctx.beginPath();pts.forEach(function(p,i){i===0?ctx.moveTo(p[0],p[1]):ctx.lineTo(p[0],p[1]);});ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fill();` : ''}
+  };
+})();`);
+        });
+
+        customComps.filter(c => c.type === 'circlemeter').forEach(comp => {
+            const strokeWidth = comp.props.strokeWidth || 6;
+            const startAngle = comp.props.startAngle || -90;
+            const color = comp.props.color || '#00bfff';
+            const trackColor = comp.props.trackColor || '#1e1e1e';
+            const showValue = comp.props.showValue !== false;
+            const fontSize = comp.props.fontSize || 14;
+            const valueColor = comp.props.valueColor || '#ffffff';
+            logicLines.push(`(function(){
+  window._drawCm_${comp.id}=function(pct){
+    var c=document.getElementById('cm-${comp.id}');
+    if(!c)return;
+    var ctx=c.getContext('2d'),w=c.width,h=c.height,cx=w/2,cy=h/2;
+    var r=Math.min(cx,cy)-${strokeWidth}/2-2;
+    var sa=${startAngle}*Math.PI/180,p=pct/100;
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle='${trackColor}';ctx.lineWidth=${strokeWidth};ctx.beginPath();ctx.arc(cx,cy,r,0,2*Math.PI);ctx.stroke();
+    ctx.strokeStyle='${color}';ctx.beginPath();ctx.arc(cx,cy,r,sa,sa+p*2*Math.PI);ctx.stroke();
+    ${showValue ? `ctx.fillStyle='${valueColor}';ctx.font='${fontSize}px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(Math.round(pct)+'%',cx,cy);` : ''}
+  };
+})();`);
+        });
     });
 
     if (clockComps.length > 0 || clockTextComps.length > 0) {

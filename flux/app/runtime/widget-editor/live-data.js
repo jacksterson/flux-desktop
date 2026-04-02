@@ -88,7 +88,7 @@ async function setupLiveData() {
 
     // Register and start custom data sources
     await registerSources();
-    startSourceListeners();
+    await startSourceListeners();
 }
 
 function updateLiveElements(data) {

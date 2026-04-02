@@ -134,7 +134,7 @@ function renderCanvas() {
         canvasEl.appendChild(overlay);
     }
 
-    _ctx.setupLiveData();
+    _ctx.setupLiveData().catch(e => console.error('[live-data] setupLiveData failed:', e));
 }
 
 function renderComponentContent(el, comp) {
