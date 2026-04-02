@@ -239,11 +239,9 @@ fn check_and_recover_offscreen_widgets(app: &AppHandle, state: &AppState) -> usi
         let Some(bounds) = bounds else { continue; };
 
         let offscreen = monitors::is_topleft_offscreen(bounds.x as i32, bounds.y as i32, &ms);
-        if offscreen {
-            offscreen_ids.push(id.clone());
-        }
 
         if offscreen && !bounds.allow_offscreen {
+            // Auto-recover: move to primary monitor
             if let Some(window) = app.get_webview_window(id) {
                 let _ = window.set_position(tauri::PhysicalPosition::new(recover_x, recover_y));
             }
@@ -256,10 +254,19 @@ fn check_and_recover_offscreen_widgets(app: &AppHandle, state: &AppState) -> usi
                 }
             }
             moved += 1;
+        } else if offscreen && bounds.allow_offscreen {
+            // Track for manual recovery list — off-screen but user opted out of auto-recovery
+            offscreen_ids.push(id.clone());
         }
     }
 
     *state.offscreen_widgets.lock().unwrap() = offscreen_ids;
+
+    if moved > 0 {
+        let state_path = state.data_dir.join("window_state.json");
+        state.persistent.lock().unwrap().save(&state_path);
+    }
+
     moved
 }
 
@@ -1173,7 +1180,10 @@ fn move_widget_to_monitor(
             b.y = y as f64;
             b.monitor = Some(monitors::monitor_fingerprint(m));
         }
+        let state_path = state.data_dir.join("window_state.json");
+        p.save(&state_path);
     }
+    state.offscreen_widgets.lock().unwrap().retain(|i| i != &id);
     Ok(())
 }
 
@@ -1203,6 +1213,8 @@ fn recover_widget(
             b.y = y as f64;
             b.monitor = Some(monitors::monitor_fingerprint(primary));
         }
+        let state_path = state.data_dir.join("window_state.json");
+        p.save(&state_path);
     }
     // Remove from offscreen list
     state.offscreen_widgets.lock().unwrap().retain(|i| i != &id);
