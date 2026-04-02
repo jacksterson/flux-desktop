@@ -7,6 +7,7 @@ mod paths;
 mod archive;
 mod module_settings;
 mod autostart;
+pub mod custom_data;
 use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
 
 use sysinfo::System;
