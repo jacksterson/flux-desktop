@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+// ── Data Types ────────────────────────────────────────────────────────────────
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomSourceDef {
@@ -24,6 +25,7 @@ pub struct CustomSourceDef {
     pub interval_secs: u64,
 }
 
+// ── JSON path extraction ──────────────────────────────────────────────────────
 pub fn extract_json_path(json: &str, path: &str) -> Result<String, String> {
     let value: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| format!("invalid JSON: {}", e))?;
@@ -41,6 +43,7 @@ pub fn extract_json_path(json: &str, path: &str) -> Result<String, String> {
     })
 }
 
+// ── Shell execution ───────────────────────────────────────────────────────────
 fn resolve_shell_command<'a>(def: &'a CustomSourceDef) -> &'a str {
     #[cfg(target_os = "windows")]
     if let Some(cmd) = def.platform_overrides.get("windows") { return cmd; }
@@ -70,6 +73,7 @@ fn fetch_shell(def: &CustomSourceDef) -> Result<String, String> {
     Ok(stdout.lines().next().unwrap_or("").trim().to_string())
 }
 
+// ── HTTP execution ────────────────────────────────────────────────────────────
 fn fetch_http(def: &CustomSourceDef, client: Option<&reqwest::blocking::Client>) -> Result<String, String> {
     if def.url.is_empty() { return Err("empty URL".to_string()); }
     let owned;
@@ -87,6 +91,7 @@ fn fetch_http(def: &CustomSourceDef, client: Option<&reqwest::blocking::Client>)
     extract_json_path(&body, &def.json_path)
 }
 
+// ── Public fetch_value ────────────────────────────────────────────────────────
 pub fn fetch_value(def: &CustomSourceDef) -> Result<String, String> {
     match def.source_type.as_str() {
         "shell" => fetch_shell(def),
@@ -95,6 +100,7 @@ pub fn fetch_value(def: &CustomSourceDef) -> Result<String, String> {
     }
 }
 
+// ── Polling broker ────────────────────────────────────────────────────────────
 pub struct CustomDataBroker {
     stop_flags: Mutex<Vec<Arc<AtomicBool>>>,
 }
@@ -132,7 +138,7 @@ fn run_source(app: AppHandle, def: CustomSourceDef, stop: Arc<AtomicBool>) {
             Ok(val) => { let _ = app.emit(&format!("custom-data:{}", def.name), &val); }
             Err(e)  => { eprintln!("[custom-data:{}] error: {}", def.name, e); }
         }
-        let total_ms = def.interval_secs * 1000;
+        let total_ms = (def.interval_secs * 1000).max(1000); // floor at 1s
         let mut elapsed = 0u64;
         while elapsed < total_ms {
             if stop.load(Ordering::Relaxed) { return; }
@@ -142,6 +148,7 @@ fn run_source(app: AppHandle, def: CustomSourceDef, stop: Arc<AtomicBool>) {
     }
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
