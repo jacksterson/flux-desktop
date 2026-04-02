@@ -10,7 +10,7 @@ mod module_settings;
 mod autostart;
 pub mod custom_data;
 use custom_data::{CustomDataBroker, CustomSourceDef};
-use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
+use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir, flux_assets_category_dir};
 
 use sysinfo::System;
 use std::sync::Mutex;
@@ -639,12 +639,22 @@ fn export_widget_package(
     name: String,
     module_id: String,
     files_json: String,
+    asset_refs_json: String,
 ) -> Result<ThemeInfo, String> {
     use std::collections::HashMap;
     use std::io::Write;
 
     let files: HashMap<String, String> = serde_json::from_str(&files_json)
         .map_err(|e| format!("Invalid files JSON: {}", e))?;
+
+    #[derive(serde::Deserialize)]
+    struct AssetRef {
+        category: String,
+        filename: String,
+    }
+    let asset_refs: Vec<AssetRef> = serde_json::from_str(&asset_refs_json)
+        .unwrap_or_default();
+
     let temp_zip = std::env::temp_dir().join(format!("flux-export-{}.zip", module_id));
     let file = std::fs::File::create(&temp_zip).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
@@ -666,6 +676,17 @@ fn export_widget_package(
         zip.start_file(format!("{}/modules/{}/{}", root, module_id, filename), options)
             .map_err(|e| e.to_string())?;
         zip.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    // Binary asset files → modules/<id>/assets/<filename>
+    for asset_ref in &asset_refs {
+        let bytes = assets::read_bytes(&asset_ref.category, &asset_ref.filename)
+            .map_err(|e| format!("asset '{}': {}", asset_ref.filename, e))?;
+        zip.start_file(
+            format!("{}/modules/{}/assets/{}", root, module_id, asset_ref.filename),
+            options,
+        ).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
     }
 
     zip.finish().map_err(|e| e.to_string())?;
@@ -692,6 +713,26 @@ fn register_custom_sources(
 #[tauri::command]
 fn test_custom_source(def: CustomSourceDef) -> Result<String, String> {
     custom_data::fetch_value(&def)
+}
+
+#[tauri::command]
+fn list_assets(category: String) -> Result<Vec<assets::AssetInfo>, String> {
+    assets::list_category(&category)
+}
+
+#[tauri::command]
+fn import_asset(src_path: String) -> Result<assets::AssetInfo, String> {
+    assets::import_file(&src_path)
+}
+
+#[tauri::command]
+fn delete_asset(category: String, filename: String) -> Result<(), String> {
+    assets::delete_file(&category, &filename)
+}
+
+#[tauri::command]
+fn get_asset_data_url(category: String, filename: String) -> Result<String, String> {
+    assets::get_data_url(&category, &filename)
 }
 
 #[tauri::command]
@@ -1338,6 +1379,7 @@ pub fn run() {
             open_wizard, wizard_launch, wizard_escape,
             open_widget_editor, save_fluxwidget, load_fluxwidget, export_widget_package,
             register_custom_sources, test_custom_source,
+            list_assets, import_asset, delete_asset, get_asset_data_url,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
