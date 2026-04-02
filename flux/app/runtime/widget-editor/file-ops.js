@@ -140,6 +140,7 @@ async function runExport(modal) {
             name,
             moduleId,
             filesJson: JSON.stringify(files),
+            assetRefsJson: '[]',
         });
         modal.remove();
         _ctx.showToast('Widget installed \u2014 activate from Command Center', 'info');
