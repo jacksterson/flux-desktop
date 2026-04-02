@@ -1450,10 +1450,13 @@ pub fn run() {
             let open_i         = MenuItem::with_id(app, "open_cc",       "Open Command Center",  true, None::<&str>)?;
             let widget_editor_i = MenuItem::with_id(app, "widget_editor", "Widget Editor",     true, None::<&str>)?;
             let browse_i       = MenuItem::with_id(app, "browse",       "Browse Themes Folder", true, None::<&str>)?;
+            let bring_i        = MenuItem::with_id(app, "bring_to_screen", "Bring all widgets to screen", true, None::<&str>)?;
             let login_i   = CheckMenuItem::with_id(app, "toggle_autostart", "Start on Login",  true, initial_autostart, None::<&str>)?;
             let sep       = PredefinedMenuItem::separator(app)?;
+            let prefs_i   = MenuItem::with_id(app, "preferences",      "Preferences",          true, None::<&str>)?;
+            let sep2      = PredefinedMenuItem::separator(app)?;
             let quit_i    = MenuItem::with_id(app, "quit",             "Quit Flux",            true, None::<&str>)?;
-            let menu      = Menu::with_items(app, &[&open_i, &widget_editor_i, &browse_i, &login_i, &sep, &quit_i])?;
+            let menu      = Menu::with_items(app, &[&open_i, &widget_editor_i, &browse_i, &bring_i, &login_i, &sep, &prefs_i, &sep2, &quit_i])?;
 
             let login_i_clone = login_i.clone();
             let mut tray_builder = TrayIconBuilder::new()
@@ -1476,6 +1479,35 @@ pub fn run() {
                         let _ = std::fs::create_dir_all(&dir);
                         use tauri_plugin_opener::OpenerExt;
                         let _ = app.opener().open_path(dir.to_str().unwrap_or("."), None::<&str>);
+                    }
+                    "bring_to_screen" => {
+                        let state = app.state::<AppState>();
+                        let moved = check_and_recover_offscreen_widgets(app, &state);
+                        if moved > 0 {
+                            let msg = format!(
+                                "{} widget{} moved to your primary monitor.",
+                                moved,
+                                if moved == 1 { " was" } else { " were" }
+                            );
+                            *state.startup_toast.lock().unwrap() = Some(msg);
+                        }
+                    }
+                    "preferences" => {
+                        if let Some(win) = app.get_webview_window("flux-preferences") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        } else {
+                            let url = tauri::WebviewUrl::CustomProtocol(
+                                "flux-module://_flux/preferences/index.html".parse::<tauri::Url>().unwrap()
+                            );
+                            let _ = tauri::WebviewWindowBuilder::new(app, "flux-preferences", url)
+                                .title("Flux Preferences")
+                                .inner_size(480.0, 420.0)
+                                .min_inner_size(400.0, 320.0)
+                                .decorations(true)
+                                .transparent(false)
+                                .build();
+                        }
                     }
                     "toggle_autostart" => {
                         let state = app.state::<AppState>();
