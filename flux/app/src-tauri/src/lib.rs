@@ -15,7 +15,7 @@ use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir,
 
 use sysinfo::System;
 use std::sync::Mutex;
-use tauri::{State, Manager, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
+use tauri::{State, Manager, Emitter, WebviewWindowBuilder, WebviewUrl, AppHandle, WindowEvent, WebviewWindow};
 use tauri::menu::{Menu, MenuItem, CheckMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use nvml_wrapper::Nvml;
@@ -939,6 +939,10 @@ fn launch_module_window(id: &str, app: &AppHandle, state: &AppState) -> Result<(
         let bounds = p.windows.entry(id.to_string()).or_insert_with(WindowBounds::default);
         bounds.allow_offscreen = manifest.allow_offscreen;
     }
+    {
+        let p = state.persistent.lock().unwrap();
+        let _ = p.save(&state.data_dir.join("window_state.json"));
+    }
 
     let saved_margins = state.persistent.lock().unwrap()
         .margins.get(id).map(|m| (m.left, m.top));
@@ -1498,6 +1502,11 @@ pub fn run() {
                                 moved,
                                 if moved == 1 { " was" } else { " were" }
                             );
+                            // Try to deliver directly to command center if open
+                            if let Some(cc_win) = app.get_webview_window("command-center") {
+                                let _ = cc_win.emit("flux:toast", &msg);
+                            }
+                            // Also set startup_toast as fallback for when CC opens later
                             *state.startup_toast.lock().unwrap() = Some(msg);
                         }
                     }

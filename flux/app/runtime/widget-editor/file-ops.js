@@ -199,6 +199,8 @@ function generateWidgetFiles(name, moduleId, width, height) {
     const moduleJson = JSON.stringify({
         id: moduleId,
         name,
+        author: '',
+        version: '1.0.0',
         entry: 'index.html',
         window: { width, height, transparent: true, decorations: false, resizable: true },
         permissions,
