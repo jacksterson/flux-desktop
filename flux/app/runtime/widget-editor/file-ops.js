@@ -5,6 +5,12 @@ import { resolveShaderGlsl } from './shader.js';
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
 
+// Sanitize a CSS color value for safe interpolation into generated JS string literals.
+// Strips any character that is not valid in a CSS color value.
+function sanitizeCssColor(v) {
+    return typeof v === 'string' ? v.replace(/[^a-zA-Z0-9#().,%\- ]/g, '') : '';
+}
+
 function slugify(s) {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-widget';
 }
@@ -311,7 +317,7 @@ ${compsHtml}
     for (const [ev, evComps] of Object.entries(eventToComps)) {
         const body = evComps.map(comp => {
             if (comp.type === 'metric') {
-                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id} && d['${comp.props.source}'] !== undefined) el${comp.id}.textContent = parseFloat(d['${comp.props.source}']).toFixed(${comp.props.decimalPlaces || 1}) + '${comp.props.suffix || ''}';`;
+                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id} && d['${comp.props.source}'] !== undefined) el${comp.id}.textContent = parseFloat(d['${comp.props.source}']).toFixed(${comp.props.decimalPlaces !== undefined ? comp.props.decimalPlaces : 1}) + '${comp.props.suffix || ''}';`;
             } else if (comp.type === 'progressbar') {
                 return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id} && d['${comp.props.source}'] !== undefined) pb${comp.id}.style.width = Math.min(100,Math.max(0,parseFloat(d['${comp.props.source}']))).toFixed(1) + '%';`;
             } else if (comp.type === 'text') {
@@ -349,8 +355,8 @@ ${compsHtml}
         // Emit canvas drawing helpers for linegraph/circlemeter
         customComps.filter(c => c.type === 'linegraph').forEach(comp => {
             const maxPts = comp.props.maxPoints || 60;
-            const lineColor = comp.props.lineColor || '#00bfff';
-            const fillColor = comp.props.fillColor || '';
+            const lineColor = sanitizeCssColor(comp.props.lineColor) || '#00bfff';
+            const fillColor = sanitizeCssColor(comp.props.fillColor) || '';
             logicLines.push(`(function(){
   var _hist_${comp.id}=[];
   window._drawLg_${comp.id}=function(v){
@@ -374,11 +380,11 @@ ${compsHtml}
         customComps.filter(c => c.type === 'circlemeter').forEach(comp => {
             const strokeWidth = comp.props.strokeWidth || 6;
             const startAngle = comp.props.startAngle || -90;
-            const color = comp.props.color || '#00bfff';
-            const trackColor = comp.props.trackColor || '#1e1e1e';
+            const color = sanitizeCssColor(comp.props.color) || '#00bfff';
+            const trackColor = sanitizeCssColor(comp.props.trackColor) || '#1e1e1e';
             const showValue = comp.props.showValue !== false;
             const fontSize = comp.props.fontSize || 14;
-            const valueColor = comp.props.valueColor || '#ffffff';
+            const valueColor = sanitizeCssColor(comp.props.valueColor) || '#ffffff';
             logicLines.push(`(function(){
   window._drawCm_${comp.id}=function(pct){
     var c=document.getElementById('cm-${comp.id}');
