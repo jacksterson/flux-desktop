@@ -19,7 +19,13 @@
     <div class="tb-center">
       <label>W <input type="number" id="canvas-width" value="400" min="100" max="2000"></label>
       <label>H <input type="number" id="canvas-height" value="300" min="100" max="2000"></label>
-      <label id="label-allow-offscreen" title="If enabled, Flux will not automatically move this widget back on-screen if its monitor is disconnected."><input type="checkbox" id="prop-allow-offscreen"> Off-screen</label>
+      <label id="label-allow-offscreen" style="display:flex;align-items:flex-start;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="prop-allow-offscreen" style="margin-top:2px;flex-shrink:0;">
+        <span style="font-size:10px;line-height:1.4;">
+          <span style="font-size:11px;">Off-screen</span><br>
+          <span style="color:#888;">Won't auto-recover if monitor disconnects.</span>
+        </span>
+      </label>
     </div>
     <div class="tb-right">
       <button id="btn-grid" class="toggle-btn">Grid</button>

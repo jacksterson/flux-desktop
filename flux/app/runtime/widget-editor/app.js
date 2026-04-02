@@ -2,7 +2,7 @@ import { ComponentStore, HistoryStack, COMPONENT_TYPES, SOURCE_EVENTS, DATA_SOUR
 import { renderPalettePanel, setPaletteChangeCallback, resolveColor, paletteSwatchesHtml, serializePalette, deserializePalette, generatePaletteCSS } from './palette.js';
 import { renderCanvas, renderComponentContent, escHtml, selectComponent,
          renderComponentsPanel, renderProperties, renderLayers, updateCanvasSize,
-         showToast, snapVal, setContext as setRenderContext } from './render.js';
+         showToast, snapVal, renderCanvasSettings, setContext as setRenderContext } from './render.js';
 import { renderTemplate, setupLiveData, teardownLiveData, setContext as setLiveDataContext } from './live-data.js';
 import { cmdNew, cmdOpen, cmdSave, cmdSaveAs, cmdExport, setContext as setFileOpsContext } from './file-ops.js';
 import { setContext as setEffectsContext } from './effects.js';
@@ -57,6 +57,7 @@ function setAppState(json) {
     }
     deserializeSources(data.dataSources || []);
     deserializeLocalAssets(data.localAssets || {});
+    renderCanvasSettings();
 }
 
 function pushHistory() {
