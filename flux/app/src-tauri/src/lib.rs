@@ -8,6 +8,7 @@ mod archive;
 mod module_settings;
 mod autostart;
 pub mod custom_data;
+use custom_data::{CustomDataBroker, CustomSourceDef};
 use paths::{ensure_flux_dirs, flux_config_path, flux_modules_dir, flux_user_dir, flux_user_themes_dir, flux_module_settings_dir};
 
 use sysinfo::System;
@@ -195,6 +196,7 @@ pub struct AppState {
     pub desktop_wayland_windows: Mutex<HashSet<String>>,
     pub config: Mutex<EngineConfig>,
     pub config_path: PathBuf,
+    pub custom_broker: CustomDataBroker,
 }
 
 // --- Commands ---
@@ -671,6 +673,20 @@ fn export_widget_package(
     let result = do_install_archive(&temp_zip, &resource_dir);
     let _ = std::fs::remove_file(&temp_zip);
     result
+}
+
+#[tauri::command]
+fn register_custom_sources(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    sources: Vec<CustomSourceDef>,
+) {
+    state.custom_broker.register(app, sources);
+}
+
+#[tauri::command]
+fn test_custom_source(def: CustomSourceDef) -> Result<String, String> {
+    custom_data::fetch_value(&def)
 }
 
 #[tauri::command]
@@ -1216,6 +1232,7 @@ pub fn run() {
                 desktop_wayland_windows: Mutex::new(HashSet::new()),
                 config: Mutex::new(engine_config),
                 config_path: config_path.clone(),
+                custom_broker: CustomDataBroker::new(),
             });
 
             // System tray
@@ -1315,6 +1332,7 @@ pub fn run() {
             install_theme_archive, pick_and_install_theme, uninstall_theme,
             open_wizard, wizard_launch, wizard_escape,
             open_widget_editor, save_fluxwidget, load_fluxwidget, export_widget_package,
+            register_custom_sources, test_custom_source,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
