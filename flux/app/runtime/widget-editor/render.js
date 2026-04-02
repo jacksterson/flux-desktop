@@ -220,6 +220,19 @@ function renderComponentContent(el, comp) {
             el.innerHTML = `<canvas class="shader-canvas" width="${comp.width}" height="${comp.height}" style="width:100%;height:100%;display:block;"></canvas>`;
             break;
         }
+        case 'image': {
+            const src = comp.props.src || '';
+            let resolvedSrc = src;
+            if (src.startsWith('flux://asset/')) {
+                const filename = src.replace('flux://asset/', '');
+                const localAssets = window._assetManagerGetLocal ? window._assetManagerGetLocal() : {};
+                if (localAssets[filename]) resolvedSrc = localAssets[filename].dataUrl;
+            }
+            el.innerHTML = resolvedSrc
+                ? `<img src="${escHtml(resolvedSrc)}" style="width:100%;height:100%;object-fit:${escHtml(comp.props.objectFit || 'contain')};display:block;">`
+                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;">No image</div>`;
+            break;
+        }
     }
     // Apply CSS effect presets
     applyEffects(el, comp);
@@ -475,12 +488,33 @@ function renderProperties() {
             }
             break;
         }
+        case 'image':
+            fields.push(
+                propRow('Image', `<div style="display:flex;gap:4px;"><input class="prop-input" id="prop-img-src" type="text" value="${escHtml(comp.props.src || '')}" placeholder="flux://asset/filename.png" style="flex:1;"><button id="prop-img-pick" class="btn-secondary" style="padding:3px 7px;">Pick</button></div>`),
+                propSelect('Fit', 'props.objectFit', comp.props.objectFit, ['contain','cover','fill','none']),
+            );
+            break;
     }
 
     // Effects section — shown for all single-component selections
     fields.push(effectsPropsHtml(comp));
 
     container.innerHTML = fields.join('');
+
+    // Wire image-specific handlers
+    document.getElementById('prop-img-src')?.addEventListener('change', function() {
+        _ctx.store.updateProps(_ctx.primaryId, { src: this.value });
+        _ctx.pushHistory();
+        _ctx.renderCanvas();
+    });
+    document.getElementById('prop-img-fit')?.addEventListener('change', function() {
+        _ctx.store.updateProps(_ctx.primaryId, { objectFit: this.value });
+        _ctx.pushHistory();
+        _ctx.renderCanvas();
+    });
+    document.getElementById('prop-img-pick')?.addEventListener('click', () => {
+        import('./asset-manager.js').then(({ openAssetManager }) => openAssetManager());
+    });
 
     // Wire up change events
     container.querySelectorAll('[data-prop]').forEach(input => {

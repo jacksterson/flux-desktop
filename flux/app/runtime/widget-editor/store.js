@@ -31,13 +31,14 @@ export class ComponentStore {
             divider:      { orientation: 'horizontal', color: '#333333', thickness: 1, margin: 4, cssEffects: [] },
             rawhtml:      { html: '<div style="color:#00bfff;font-family:monospace;font-size:14px;">Hello World</div>', css: '', cssEffects: [] },
             shader:       { preset: 'plasma', fragmentShader: '', cssEffects: [] },
+            image:        { src: '', objectFit: 'contain', cssEffects: [] },
         };
         const component = {
             id: this._genId(),
             type,
             x: 20, y: 20,
-            width:  type === 'divider' ? 200 : (type === 'progressbar' ? 180 : (type === 'rawhtml' ? 200 : (type === 'shader' ? 180 : (type === 'linegraph' || type === 'circlemeter' ? 120 : 120)))),
-            height: type === 'divider' ? 2   : (type === 'progressbar' ? 16  : (type === 'rawhtml' ? 120 : (type === 'shader' ? 120 : (type === 'linegraph' || type === 'circlemeter' ? 80  : 40)))),
+            width:  type === 'divider' ? 200 : (type === 'progressbar' ? 180 : (type === 'rawhtml' ? 200 : (type === 'shader' ? 180 : (type === 'image' ? 120 : (type === 'linegraph' || type === 'circlemeter' ? 120 : 120))))),
+            height: type === 'divider' ? 2   : (type === 'progressbar' ? 16  : (type === 'rawhtml' ? 120 : (type === 'shader' ? 120 : (type === 'image' ? 80  : (type === 'linegraph' || type === 'circlemeter' ? 80  : 40))))),
             opacity: 100,
             visible: true,
             zIndex: this._nextZ++,
@@ -143,6 +144,7 @@ export const COMPONENT_TYPES = [
     { type: 'divider',     label: 'Divider',       icon: '—'  },
     { type: 'rawhtml',     label: 'Raw HTML',      icon: '</>' },
     { type: 'shader',      label: 'Shader',         icon: '◈'  },
+    { type: 'image',       label: 'Image',          icon: '🖼' },
 ];
 
 // ── Live data source → event mapping ─────────────────────────────────────────
