@@ -625,3 +625,24 @@ input[type="range"].prop-input {
 .source-form { display: flex; flex-direction: column; gap: 0; }
 .preset-picker, .preset-config { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px; margin-bottom: 6px; }
 .preset-option:hover { background: #1a2a3a !important; }
+
+/* ── Asset Manager Modal ───────────────────────────────────────────────────── */
+.asset-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.asset-modal { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; width: 560px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+.asset-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #30363d; }
+.asset-modal-tabs { display: flex; gap: 6px; }
+.asset-tab { background: transparent; border: 1px solid #333; border-radius: 4px; color: #888; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.asset-tab.active { border-color: #00bfff; color: #00bfff; }
+.asset-tab-content { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.asset-category { margin-bottom: 16px; }
+.asset-category-label { font-size: 10px; text-transform: uppercase; color: #666; letter-spacing: 0.8px; margin-bottom: 6px; }
+.asset-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.asset-item { width: 90px; background: #1a1a2e; border: 1px solid #30363d; border-radius: 5px; padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; cursor: default; }
+.asset-item:hover { border-color: #00bfff; }
+.asset-preview { width: 50px; height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.asset-item-name { font-size: 10px; color: #ccc; text-align: center; word-break: break-all; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-item-size { font-size: 9px; color: #666; }
+.asset-del-btn { position: absolute; top: 2px; right: 2px; font-size: 11px; padding: 0 3px; background: transparent; border: none; color: #555; cursor: pointer; }
+.asset-del-btn:hover { color: #ff4444; }
+.asset-embed-btn { font-size: 10px; padding: 1px 4px; background: transparent; border: 1px solid #333; border-radius: 2px; cursor: pointer; color: #888; margin-top: 2px; }
+.asset-embed-btn:hover { color: #00bfff; border-color: #00bfff; }

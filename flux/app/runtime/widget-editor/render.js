@@ -391,30 +391,52 @@ function renderProperties() {
 
     // Per-type fields
     switch (comp.type) {
-        case 'text':
+        case 'text': {
             const availableKeys = DATA_SOURCES.map(d => `{{${d.key}}}`).join(', ') + ', {{time}}, {{date}}';
+            const localAssets_text = window._assetManagerGetLocal ? window._assetManagerGetLocal() : {};
+            const libraryFonts_text = Object.keys(localAssets_text)
+                .filter(f => ['ttf','otf','woff','woff2'].some(e => f.endsWith('.' + e)))
+                .map(f => f.replace(/\.[^.]+$/, ''));
+            const fontOptions_text = ['monospace','sans-serif','serif','cursive','fantasy', ...libraryFonts_text];
             fields.push(
                 propText(    'Content',        'props.content',      comp.props.content),
                 `<div style="font-size:10px; color:#888; padding:0 8px 8px; line-height:1.3;">Available keys:<br><span style="font-family:monospace;">${availableKeys}</span></div>`,
                 propNumber(  'Font Size',      'props.fontSize',     comp.props.fontSize, 6),
                 propColor(   'Color',          'props.color',        comp.props.color),
-                propSelect(  'Font Family',    'props.fontFamily',   comp.props.fontFamily, ['monospace','sans-serif','serif','cursive']),
+                `<div class="prop-row"><label class="prop-label">Font Family</label>
+    <input class="prop-input" data-prop="props.fontFamily" id="prop-font-family" list="font-family-list" value="${escHtml(comp.props.fontFamily || 'monospace')}">
+    <datalist id="font-family-list">
+        ${fontOptions_text.map(f => `<option value="${escHtml(f)}">`).join('')}
+    </datalist>
+</div>`,
                 propSelect(  'Font Weight',    'props.fontWeight',   comp.props.fontWeight, ['normal','bold']),
                 propSelect(  'Text Align',     'props.textAlign',    comp.props.textAlign,  ['left','center','right']),
                 propNumber(  'Letter Spacing', 'props.letterSpacing',comp.props.letterSpacing, 0),
             );
             break;
-        case 'metric':
+        }
+        case 'metric': {
+            const localAssets_metric = window._assetManagerGetLocal ? window._assetManagerGetLocal() : {};
+            const libraryFonts_metric = Object.keys(localAssets_metric)
+                .filter(f => ['ttf','otf','woff','woff2'].some(e => f.endsWith('.' + e)))
+                .map(f => f.replace(/\.[^.]+$/, ''));
+            const fontOptions_metric = ['monospace','sans-serif','serif','cursive','fantasy', ...libraryFonts_metric];
             fields.push(
                 propSource(  'Source',         'props.source',       comp.props.source),
                 propText(    'Label',          'props.label',        comp.props.label),
                 propText(    'Suffix',         'props.suffix',       comp.props.suffix),
                 propNumber(  'Font Size',      'props.fontSize',     comp.props.fontSize, 6),
                 propColor(   'Color',          'props.color',        comp.props.color),
-                propSelect(  'Font Family',    'props.fontFamily',   comp.props.fontFamily, ['monospace','sans-serif','serif']),
+                `<div class="prop-row"><label class="prop-label">Font Family</label>
+    <input class="prop-input" data-prop="props.fontFamily" id="prop-font-family" list="font-family-list" value="${escHtml(comp.props.fontFamily || 'monospace')}">
+    <datalist id="font-family-list">
+        ${fontOptions_metric.map(f => `<option value="${escHtml(f)}">`).join('')}
+    </datalist>
+</div>`,
                 propNumber(  'Decimal Places', 'props.decimalPlaces',comp.props.decimalPlaces, 0, 3),
             );
             break;
+        }
         case 'progressbar':
             fields.push(
                 propSource(  'Source',        'props.source',      comp.props.source),
@@ -445,15 +467,26 @@ function renderProperties() {
                 propColor(   'Value Color',  'props.valueColor', comp.props.valueColor),
             );
             break;
-        case 'clock':
+        case 'clock': {
+            const localAssets_clock = window._assetManagerGetLocal ? window._assetManagerGetLocal() : {};
+            const libraryFonts_clock = Object.keys(localAssets_clock)
+                .filter(f => ['ttf','otf','woff','woff2'].some(e => f.endsWith('.' + e)))
+                .map(f => f.replace(/\.[^.]+$/, ''));
+            const fontOptions_clock = ['monospace','sans-serif','serif','cursive','fantasy', ...libraryFonts_clock];
             fields.push(
                 propSelect(  'Format',      'props.format',     comp.props.format,   ['HH:mm:ss','HH:mm','hh:mm A']),
                 propText(    'Timezone',    'props.timezone',   comp.props.timezone),
                 propNumber(  'Font Size',   'props.fontSize',   comp.props.fontSize, 6),
                 propColor(   'Color',       'props.color',      comp.props.color),
-                propSelect(  'Font Family', 'props.fontFamily', comp.props.fontFamily,['monospace','sans-serif','serif']),
+                `<div class="prop-row"><label class="prop-label">Font Family</label>
+    <input class="prop-input" data-prop="props.fontFamily" id="prop-font-family" list="font-family-list" value="${escHtml(comp.props.fontFamily || 'monospace')}">
+    <datalist id="font-family-list">
+        ${fontOptions_clock.map(f => `<option value="${escHtml(f)}">`).join('')}
+    </datalist>
+</div>`,
             );
             break;
+        }
         case 'divider':
             fields.push(
                 propSelect(  'Orientation', 'props.orientation', comp.props.orientation, ['horizontal','vertical']),
@@ -570,7 +603,7 @@ function renderLayers() {
         row.dataset.id = comp.id;
         row.draggable = true;
 
-        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—', rawhtml:'</>', shader:'◈' };
+        const typeIcons = { text:'T', metric:'#', progressbar:'▬', linegraph:'📈', circlemeter:'○', clock:'🕐', divider:'—', rawhtml:'</>', shader:'◈', image:'🖼' };
         const icon = typeIcons[comp.type] || '?';
         const label = comp.props.label || comp.props.content || comp.type;
 

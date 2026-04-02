@@ -12,6 +12,10 @@ import {
     startSourceListeners, stopSourceListeners, registerSources,
     getSources, setContext as setDataSourcesContext
 } from './data-sources.js';
+import {
+    openAssetManager, serializeLocalAssets, deserializeLocalAssets,
+    getLocalAssets, setContext as setAssetManagerContext
+} from './asset-manager.js';
 
 if (!window.__TAURI__) {
   document.getElementById('canvas').innerHTML =
@@ -40,6 +44,7 @@ function getAppState() {
     const data = JSON.parse(store.serialize());
     data.palette = serializePalette();
     data.dataSources = serializeSources();
+    data.localAssets = serializeLocalAssets();
     return JSON.stringify(data);
 }
 
@@ -51,6 +56,7 @@ function setAppState(json) {
         renderPalettePanel();
     }
     deserializeSources(data.dataSources || []);
+    deserializeLocalAssets(data.localAssets || {});
 }
 
 function pushHistory() {
@@ -101,6 +107,8 @@ setFileOpsContext(ctx);
 setEffectsContext(ctx);
 setShaderContext(ctx);
 setDataSourcesContext(ctx);
+setAssetManagerContext(ctx);
+window._assetManagerGetLocal = getLocalAssets;
 
 // ── Drag/resize handlers ──────────────────────────────────────────────────────
 
@@ -295,6 +303,10 @@ document.getElementById('btn-grid').addEventListener('click', function() {
 document.getElementById('btn-snap').addEventListener('click', function() {
     this.classList.toggle('active');
 });
+
+// ── Assets button ─────────────────────────────────────────────────────────────
+
+document.getElementById('btn-assets')?.addEventListener('click', openAssetManager);
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
 
