@@ -160,7 +160,7 @@ function collectAssetRefs(files) {
     const allText = Object.values(files).join('\n');
 
     // flux://asset/<filename> references in HTML/CSS/JS
-    const assetPattern = /flux:\/\/asset\/([^"')]+?)(?=["'\s)]|$)/g;
+    const assetPattern = /flux:\/\/asset\/([^"')]+?)(?=["')]|$)/g;
     let m;
     while ((m = assetPattern.exec(allText)) !== null) {
         const filename = m[1];
