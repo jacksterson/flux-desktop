@@ -135,6 +135,13 @@ pub struct WindowBounds {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// Fingerprint of the monitor this widget was last seen on ("name:WxH@x,y").
+    /// None for widgets created before Phase 5a.
+    #[serde(default)]
+    pub monitor: Option<String>,
+    /// If true, the startup off-screen check skips this widget.
+    #[serde(default)]
+    pub allow_offscreen: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -776,12 +783,24 @@ fn track_window(window: WebviewWindow) {
             }
 
             if let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) {
+                let monitor_fp = {
+                    let ms = monitors::collect_monitors(&app_handle);
+                    monitors::monitor_for_position(pos.x, pos.y, &ms)
+                        .map(monitors::monitor_fingerprint)
+                };
+                // Preserve allow_offscreen from existing saved state
+                let allow_offscreen = {
+                    let p = state.persistent.lock().unwrap();
+                    p.windows.get(&label).map(|b| b.allow_offscreen).unwrap_or(false)
+                };
                 let mut p = state.persistent.lock().unwrap();
                 p.windows.insert(label.clone(), WindowBounds {
                     x: pos.x as f64,
                     y: pos.y as f64,
                     width: size.width as f64,
                     height: size.height as f64,
+                    monitor: monitor_fp,
+                    allow_offscreen,
                 });
                 let state_path = state.data_dir.join("window_state.json");
                 p.save(&state_path);
@@ -842,7 +861,7 @@ fn launch_module_window(id: &str, app: &AppHandle, state: &AppState) -> Result<(
         .shadow(false);
 
     if let Some(b) = &saved {
-        builder = builder.position(b.x, b.y).inner_size(b.width, b.height);
+        builder = builder.inner_size(b.width, b.height);
     } else {
         builder = builder.inner_size(win_config.width, win_config.height);
     }
@@ -946,9 +965,7 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
             .shadow(false);
 
         if let Some(b) = &saved {
-            builder = builder
-                .position(b.x, b.y)
-                .inner_size(b.width, b.height);
+            builder = builder.inner_size(b.width, b.height);
         } else {
             builder = builder.inner_size(350.0, 500.0);
         }
@@ -1032,17 +1049,25 @@ async fn move_module(
 
 #[tauri::command]
 fn resize_module(app: AppHandle, id: String, direction: String, dx: i32, dy: i32) -> Result<(), String> {
-    let window = app.get_webview_window(&id).ok_or_else(|| format!("resize_module: window '{}' not found", id))?;
+    let window = app.get_webview_window(&id)
+        .ok_or_else(|| format!("resize_module: window '{}' not found", id))?;
+
+    // dx/dy arrive as CSS logical pixels from JS screenX/Y deltas.
+    // inner_size() returns physical pixels. Scale to match.
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let pdx = (dx as f64 * scale).round() as i32;
+    let pdy = (dy as f64 * scale).round() as i32;
+
     let current = window.inner_size().map_err(|e| e.to_string())?;
     let (dw, dh): (i32, i32) = match direction.as_str() {
-        "East"      => (dx, 0),
-        "West"      => (-dx, 0),
-        "North"     => (0, -dy),
-        "South"     => (0, dy),
-        "NorthEast" => (dx, -dy),
-        "NorthWest" => (-dx, -dy),
-        "SouthEast" => (dx, dy),
-        "SouthWest" => (-dx, dy),
+        "East"      => (pdx, 0),
+        "West"      => (-pdx, 0),
+        "North"     => (0, -pdy),
+        "South"     => (0, pdy),
+        "NorthEast" => (pdx, -pdy),
+        "NorthWest" => (-pdx, -pdy),
+        "SouthEast" => (pdx, pdy),
+        "SouthWest" => (-pdx, pdy),
         other => return Err(format!("resize_module: unknown direction '{}'", other)),
     };
     let new_w = (current.width as i32 + dw).max(100) as u32;
@@ -1406,7 +1431,7 @@ mod tests {
         let mut state = PersistentState::default();
         state.windows.insert(
             "test-window".to_string(),
-            WindowBounds { x: 10.0, y: 20.0, width: 400.0, height: 600.0 },
+            WindowBounds { x: 10.0, y: 20.0, width: 400.0, height: 600.0, ..Default::default() },
         );
         state.save(&path);
         let loaded = PersistentState::load(&path);
@@ -1686,6 +1711,18 @@ mod tests {
         let loaded = read_config(&tmp);
         assert_eq!(loaded.engine.active_modules, vec!["system-stats", "time-date"]);
         std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn resize_deltas_scale_with_hidpi() {
+        // At 2x scale, a 10px CSS delta should become 20 physical pixels.
+        let scale = 2.0_f64;
+        let dx = 10_i32;
+        let dy = 5_i32;
+        let pdx = (dx as f64 * scale).round() as i32;
+        let pdy = (dy as f64 * scale).round() as i32;
+        assert_eq!(pdx, 20);
+        assert_eq!(pdy, 10);
     }
 
     #[test]
