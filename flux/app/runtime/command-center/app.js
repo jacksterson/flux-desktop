@@ -286,3 +286,24 @@ document.getElementById('close-btn').addEventListener('click', () => {
 });
 
 loadThemes();
+
+// Show startup notification if Flux moved any off-screen widgets
+(async () => {
+    try {
+        const toast = await invoke('get_and_clear_startup_toast');
+        if (toast) {
+            const banner = document.createElement('div');
+            banner.style.cssText = [
+                'position:fixed', 'bottom:16px', 'left:50%', 'transform:translateX(-50%)',
+                'background:#1a3a4a', 'color:#00bfff', 'border:1px solid #00bfff',
+                'border-radius:6px', 'padding:8px 16px', 'font-size:12px',
+                'font-family:monospace', 'z-index:9999', 'max-width:360px', 'text-align:center',
+            ].join(';');
+            banner.textContent = toast;
+            document.body.appendChild(banner);
+            setTimeout(() => banner.remove(), 5000);
+        }
+    } catch (e) {
+        // Silently ignore if command not available
+    }
+})();
