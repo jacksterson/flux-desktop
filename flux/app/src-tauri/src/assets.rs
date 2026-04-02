@@ -60,7 +60,8 @@ pub fn import_file(src_path: &str) -> Result<AssetInfo, String> {
         return Err("invalid filename".to_string());
     }
     let category = asset_category_from_filename(&filename);
-    let dest_dir = crate::paths::flux_assets_category_dir(category).unwrap();
+    let dest_dir = crate::paths::flux_assets_category_dir(category)
+        .ok_or_else(|| format!("unknown category: {}", category))?;
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest = dest_dir.join(&filename);
     std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
@@ -76,6 +77,11 @@ pub fn delete_file(category: &str, filename: &str) -> Result<(), String> {
     let dir = crate::paths::flux_assets_category_dir(category)
         .ok_or_else(|| format!("unknown category: {}", category))?;
     let path = dir.join(filename);
+    let canonical_dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canonical_dir) {
+        return Err("path traversal rejected".to_string());
+    }
     if !path.exists() { return Err(format!("{} not found", filename)); }
     std::fs::remove_file(&path).map_err(|e| e.to_string())
 }
@@ -88,6 +94,11 @@ pub fn get_data_url(category: &str, filename: &str) -> Result<String, String> {
     let dir = crate::paths::flux_assets_category_dir(category)
         .ok_or_else(|| format!("unknown category: {}", category))?;
     let path = dir.join(filename);
+    let canonical_dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canonical_dir) {
+        return Err("path traversal rejected".to_string());
+    }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     let ext = Path::new(filename).extension().and_then(|e| e.to_str()).unwrap_or("");
     let mime = match ext.to_lowercase().as_str() {
@@ -114,7 +125,13 @@ pub fn read_bytes(category: &str, filename: &str) -> Result<Vec<u8>, String> {
     }
     let dir = crate::paths::flux_assets_category_dir(category)
         .ok_or_else(|| format!("unknown category: {}", category))?;
-    std::fs::read(dir.join(filename)).map_err(|e| e.to_string())
+    let path = dir.join(filename);
+    let canonical_dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canonical_dir) {
+        return Err("path traversal rejected".to_string());
+    }
+    std::fs::read(path).map_err(|e| e.to_string())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

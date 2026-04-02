@@ -76,8 +76,8 @@ pub fn flux_assets_category_dir(category: &str) -> Option<PathBuf> {
     }
 }
 
-/// Creates ~/Flux/modules, ~/Flux/skins, ~/.local/share/flux/themes, and
-/// ~/.local/share/flux/settings if they do not exist.
+/// Creates all required Flux directories if they do not exist:
+/// modules, skins, themes, settings, and assets (fonts/images/other).
 /// Called once at app startup.
 pub fn ensure_flux_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(flux_modules_dir())?;
