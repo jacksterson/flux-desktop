@@ -110,21 +110,38 @@ impl CustomDataBroker {
         CustomDataBroker { stop_flags: Mutex::new(Vec::new()) }
     }
 
-    pub fn register(&self, app: AppHandle, sources: Vec<CustomSourceDef>) {
-        self.stop_all();
-        let mut flags = self.stop_flags.lock().unwrap();
+    pub fn register(&self, app: AppHandle, sources: Vec<CustomSourceDef>) -> Result<(), String> {
+        // Check for duplicate names
+        let mut seen = std::collections::HashSet::new();
+        for def in &sources {
+            if !seen.insert(def.name.clone()) {
+                return Err(format!("duplicate custom source name: '{}'", def.name));
+            }
+        }
+        self.stop_all()?;
+        let mut flags = self.stop_flags.lock().map_err(|e| e.to_string())?;
         for def in sources {
             let stop = Arc::new(AtomicBool::new(false));
             flags.push(stop.clone());
             let app_clone = app.clone();
             thread::spawn(move || run_source(app_clone, def, stop));
         }
+        Ok(())
     }
 
-    pub fn stop_all(&self) {
-        let mut flags = self.stop_flags.lock().unwrap();
-        for flag in flags.iter() { flag.store(true, Ordering::Relaxed); }
+    pub fn stop_all(&self) -> Result<(), String> {
+        let mut flags = self.stop_flags.lock().map_err(|e| e.to_string())?;
+        for flag in flags.iter() {
+            flag.store(true, Ordering::Relaxed); // Relaxed: we're signaling stop, no data crosses this boundary
+        }
         flags.clear();
+        Ok(())
+    }
+}
+
+impl Drop for CustomDataBroker {
+    fn drop(&mut self) {
+        let _ = self.stop_all();
     }
 }
 
@@ -133,7 +150,9 @@ fn run_source(app: AppHandle, def: CustomSourceDef, stop: Arc<AtomicBool>) {
         reqwest::blocking::Client::builder().timeout(Duration::from_secs(10)).build().ok()
     } else { None };
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) { // Relaxed: reading stop signal only
+            break;
+        }
         match if def.source_type == "http" { fetch_http(&def, client.as_ref()) } else { fetch_shell(&def) } {
             Ok(val) => { let _ = app.emit(&format!("custom-data:{}", def.name), &val); }
             Err(e)  => { eprintln!("[custom-data:{}] error: {}", def.name, e); }
@@ -141,7 +160,9 @@ fn run_source(app: AppHandle, def: CustomSourceDef, stop: Arc<AtomicBool>) {
         let total_ms = (def.interval_secs * 1000).max(1000); // floor at 1s
         let mut elapsed = 0u64;
         while elapsed < total_ms {
-            if stop.load(Ordering::Relaxed) { return; }
+            if stop.load(Ordering::Relaxed) { // Relaxed: reading stop signal only
+                return;
+            }
             thread::sleep(Duration::from_millis(100));
             elapsed += 100;
         }

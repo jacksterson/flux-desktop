@@ -680,10 +680,14 @@ fn register_custom_sources(
     app: AppHandle,
     state: State<'_, AppState>,
     sources: Vec<CustomSourceDef>,
-) {
-    state.custom_broker.register(app, sources);
+) -> Result<(), String> {
+    state.custom_broker.register(app, sources)
 }
 
+/// Runs a single custom data source fetch synchronously.
+/// NOTE: This command is blocking — it runs `sh`/`powershell` or an HTTP request
+/// on the calling thread. Only intended for use from the widget editor test button,
+/// not from widget runtime hot paths.
 #[tauri::command]
 fn test_custom_source(def: CustomSourceDef) -> Result<String, String> {
     custom_data::fetch_value(&def)
