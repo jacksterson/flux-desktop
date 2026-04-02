@@ -3,6 +3,8 @@
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
 
+function esc(s) { return _ctx ? _ctx.escHtml(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let _sources = []; // Array of CustomSourceDef objects
@@ -17,21 +19,21 @@ export function serializeSources() {
 
 export function deserializeSources(data) {
     _sources = Array.isArray(data) ? data.map(s => ({ ...s })) : [];
+    _liveValues = {};
 }
 
 // ── Live preview subscriptions ────────────────────────────────────────────────
 
-export function startSourceListeners() {
+export async function startSourceListeners() {
     stopSourceListeners();
     const { listen } = window.__TAURI__.event;
-    _sources.forEach(s => {
-        let cancel = null;
-        listen(`custom-data:${s.name}`, e => {
+    for (const s of _sources) {
+        const unsub = await listen(`custom-data:${s.name}`, e => {
             _liveValues[s.name] = String(e.payload);
             renderSourcesPanel();
-        }).then(fn => { cancel = fn; });
-        _unsubs.push(() => { if (cancel) cancel(); });
-    });
+        });
+        _unsubs.push(unsub);
+    }
 }
 
 export function stopSourceListeners() {
@@ -56,8 +58,12 @@ export async function registerSources() {
 
 export async function addSource(def) {
     _sources.push({ ...def });
-    await registerSources();
-    startSourceListeners();
+    try {
+        await registerSources();
+        await startSourceListeners();
+    } catch (e) {
+        console.error('[data-sources] addSource failed:', e);
+    }
     _ctx.pushHistory();
     renderSourcesPanel();
 }
@@ -66,8 +72,12 @@ export async function updateSource(name, def) {
     const idx = _sources.findIndex(s => s.name === name);
     if (idx !== -1) {
         _sources[idx] = { ...def };
-        await registerSources();
-        startSourceListeners();
+        try {
+            await registerSources();
+            await startSourceListeners();
+        } catch (e) {
+            console.error('[data-sources] updateSource failed:', e);
+        }
         _ctx.pushHistory();
         renderSourcesPanel();
     }
@@ -76,13 +86,18 @@ export async function updateSource(name, def) {
 export async function removeSource(name) {
     _sources = _sources.filter(s => s.name !== name);
     delete _liveValues[name];
-    await registerSources();
-    startSourceListeners();
+    try {
+        await registerSources();
+        await startSourceListeners();
+    } catch (e) {
+        console.error('[data-sources] removeSource failed:', e);
+    }
     _ctx.pushHistory();
     renderSourcesPanel();
 }
 
 export async function testSource(def) {
+    if (!_ctx) return Promise.reject('context not set');
     return _ctx.invoke('test_custom_source', { def });
 }
 
@@ -104,15 +119,15 @@ export function renderSourcesPanel() {
             const badge = s.type === 'http' ? 'HTTP' : 'SHELL';
             const badgeClass = s.type === 'http' ? 'badge-http' : 'badge-shell';
             html += `
-                <div class="source-row" data-name="${s.name}">
+                <div class="source-row" data-name="${esc(s.name)}">
                     <div class="source-row-main">
                         <span class="source-badge ${badgeClass}">${badge}</span>
-                        <span class="source-name">${s.name}</span>
-                        <span class="source-live-val">${val !== undefined ? val : '…'}</span>
+                        <span class="source-name">${esc(s.name)}</span>
+                        <span class="source-live-val">${val !== undefined ? esc(val) : '…'}</span>
                     </div>
                     <div class="source-row-actions">
-                        <button class="source-edit-btn btn-icon" data-name="${s.name}" title="Edit">✎</button>
-                        <button class="source-del-btn btn-icon" data-name="${s.name}" title="Delete">×</button>
+                        <button class="source-edit-btn btn-icon" data-name="${esc(s.name)}" title="Edit">✎</button>
+                        <button class="source-del-btn btn-icon" data-name="${esc(s.name)}" title="Delete">×</button>
                     </div>
                 </div>
             `;
@@ -367,7 +382,7 @@ function showPresetConfig(httpFields, preset, nameEl, urlEl, pathEl) {
         }
         formHtml += `</div>`;
         if (f.type === 'text' && preset.keyLink && f.key === 'apiKey') {
-            formHtml += `<div style="font-size:10px;margin-bottom:4px;"><a href="#" onclick="window.__TAURI__.opener.open('${preset.keyLink}');return false;" style="color:#00bfff;">Register for a free key →</a></div>`;
+            formHtml += `<div style="font-size:10px;margin-bottom:4px;"><a href="#" class="preset-key-link" data-href="${esc(preset.keyLink)}" style="color:#00bfff;">Register for a free key →</a></div>`;
         }
     });
     formHtml += `<div style="display:flex;gap:6px;margin-top:6px;">
@@ -376,6 +391,13 @@ function showPresetConfig(httpFields, preset, nameEl, urlEl, pathEl) {
     </div></div>`;
 
     picker.innerHTML = formHtml;
+
+    picker.querySelectorAll('.preset-key-link').forEach(a => {
+        a.addEventListener('click', e => {
+            e.preventDefault();
+            window.__TAURI__.opener.open(a.dataset.href);
+        });
+    });
 
     picker.querySelectorAll('.preset-field').forEach(el => {
         config[el.dataset.key] = el.value;
