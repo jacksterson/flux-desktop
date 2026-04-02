@@ -3,7 +3,7 @@
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
 
-function esc(s) { return _ctx ? _ctx.escHtml(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s) { return _ctx ? _ctx.escHtml(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ export async function addSource(def) {
     } catch (e) {
         console.error('[data-sources] addSource failed:', e);
     }
-    _ctx.pushHistory();
+    _ctx?.pushHistory();
     renderSourcesPanel();
 }
 
@@ -78,7 +78,7 @@ export async function updateSource(name, def) {
         } catch (e) {
             console.error('[data-sources] updateSource failed:', e);
         }
-        _ctx.pushHistory();
+        _ctx?.pushHistory();
         renderSourcesPanel();
     }
 }
@@ -92,7 +92,7 @@ export async function removeSource(name) {
     } catch (e) {
         console.error('[data-sources] removeSource failed:', e);
     }
-    _ctx.pushHistory();
+    _ctx?.pushHistory();
     renderSourcesPanel();
 }
 
@@ -173,7 +173,7 @@ function showSourceForm(container, existing) {
         <div class="source-form">
             <div class="prop-row">
                 <label class="prop-label">Name</label>
-                <input id="sf-name" class="prop-input" type="text" value="${def.name}" placeholder="my_source">
+                <input id="sf-name" class="prop-input" type="text" value="${esc(def.name)}" placeholder="my_source">
             </div>
             <div class="prop-row">
                 <label class="prop-label">Type</label>
@@ -192,24 +192,24 @@ function showSourceForm(container, existing) {
             <div id="sf-shell-fields" style="display:${def.type === 'shell' ? 'block' : 'none'}">
                 <div class="prop-row">
                     <label class="prop-label">Command</label>
-                    <input id="sf-command" class="prop-input" type="text" value="${def.command || ''}" placeholder="echo hello">
+                    <input id="sf-command" class="prop-input" type="text" value="${esc(def.command || '')}" placeholder="echo hello">
                 </div>
                 <details style="margin-bottom:6px;">
                     <summary style="font-size:10px;color:#888;cursor:pointer;">Per-platform overrides (optional)</summary>
-                    <div class="prop-row"><label class="prop-label">Linux</label><input id="sf-linux" class="prop-input" type="text" value="${def.platformOverrides?.linux || ''}"></div>
-                    <div class="prop-row"><label class="prop-label">macOS</label><input id="sf-macos" class="prop-input" type="text" value="${def.platformOverrides?.macos || ''}"></div>
-                    <div class="prop-row"><label class="prop-label">Windows</label><input id="sf-windows" class="prop-input" type="text" value="${def.platformOverrides?.windows || ''}"></div>
+                    <div class="prop-row"><label class="prop-label">Linux</label><input id="sf-linux" class="prop-input" type="text" value="${esc(def.platformOverrides?.linux || '')}"></div>
+                    <div class="prop-row"><label class="prop-label">macOS</label><input id="sf-macos" class="prop-input" type="text" value="${esc(def.platformOverrides?.macos || '')}"></div>
+                    <div class="prop-row"><label class="prop-label">Windows</label><input id="sf-windows" class="prop-input" type="text" value="${esc(def.platformOverrides?.windows || '')}"></div>
                 </details>
             </div>
 
             <div id="sf-http-fields" style="display:${def.type === 'http' ? 'block' : 'none'}">
                 <div class="prop-row">
                     <label class="prop-label">URL</label>
-                    <input id="sf-url" class="prop-input" type="text" value="${def.url || ''}" placeholder="https://api.example.com/data">
+                    <input id="sf-url" class="prop-input" type="text" value="${esc(def.url || '')}" placeholder="https://api.example.com/data">
                 </div>
                 <div class="prop-row">
                     <label class="prop-label">JSON Path</label>
-                    <input id="sf-jsonpath" class="prop-input" type="text" value="${def.jsonPath || ''}" placeholder="current.temperature_2m">
+                    <input id="sf-jsonpath" class="prop-input" type="text" value="${esc(def.jsonPath || '')}" placeholder="current.temperature_2m">
                 </div>
                 <div style="margin-bottom:6px;">
                     <a id="sf-preset-link" href="#" style="font-size:10px;color:#00bfff;">Use a preset...</a>
