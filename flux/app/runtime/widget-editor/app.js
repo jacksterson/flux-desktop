@@ -7,6 +7,11 @@ import { renderTemplate, setupLiveData, teardownLiveData, setContext as setLiveD
 import { cmdNew, cmdOpen, cmdSave, cmdSaveAs, cmdExport, setContext as setFileOpsContext } from './file-ops.js';
 import { setContext as setEffectsContext } from './effects.js';
 import { setContext as setShaderContext } from './shader.js';
+import {
+    renderSourcesPanel, serializeSources, deserializeSources,
+    startSourceListeners, stopSourceListeners, registerSources,
+    getSources, setContext as setDataSourcesContext
+} from './data-sources.js';
 
 if (!window.__TAURI__) {
   document.getElementById('canvas').innerHTML =
@@ -34,6 +39,7 @@ let currentFilePath = null; // null means unsaved
 function getAppState() {
     const data = JSON.parse(store.serialize());
     data.palette = serializePalette();
+    data.dataSources = serializeSources();
     return JSON.stringify(data);
 }
 
@@ -44,6 +50,7 @@ function setAppState(json) {
         deserializePalette(data.palette);
         renderPalettePanel();
     }
+    deserializeSources(data.dataSources || []);
 }
 
 function pushHistory() {
@@ -83,6 +90,9 @@ const ctx = {
     renderTemplate:        (...a) => renderTemplate(...a),
     escHtml:               (...a) => escHtml(...a),
     showToast:             (...a) => showToast(...a),
+    renderSourcesPanel:    (...a) => renderSourcesPanel(...a),
+    serializeSources:      (...a) => serializeSources(...a),
+    getSources:            (...a) => getSources(...a),
 };
 
 setRenderContext(ctx);
@@ -90,6 +100,7 @@ setLiveDataContext(ctx);
 setFileOpsContext(ctx);
 setEffectsContext(ctx);
 setShaderContext(ctx);
+setDataSourcesContext(ctx);
 
 // ── Drag/resize handlers ──────────────────────────────────────────────────────
 
@@ -316,7 +327,7 @@ document.getElementById('preset-ml').addEventListener('click', () => applyPreset
 
 // ── Panel dragging and persistence ───────────────────────────────────────────
 
-const PANEL_IDS = ['panel-components', 'panel-properties', 'panel-layers', 'panel-palette'];
+const PANEL_IDS = ['panel-components', 'panel-properties', 'panel-layers', 'panel-palette', 'panel-sources'];
 
 function savePanelPositions() {
     const positions = {};
@@ -384,6 +395,7 @@ document.addEventListener('mouseup',   onDragEnd);
 
 renderComponentsPanel();
 renderPalettePanel();
+renderSourcesPanel();
 renderCanvas();
 
 // Wire palette changes to re-render canvas

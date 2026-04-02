@@ -1,6 +1,7 @@
 import { SOURCE_EVENTS } from './store.js';
 import { resolveColor } from './palette.js';
 import { startShaderLoop, stopAllShaderLoops, resolveShaderGlsl } from './shader.js';
+import { startSourceListeners, stopSourceListeners, registerSources } from './data-sources.js';
 
 let _ctx = null;
 export function setContext(ctx) { _ctx = ctx; }
@@ -24,12 +25,13 @@ function renderTemplate(tpl) {
 }
 
 function teardownLiveData() {
+    stopSourceListeners();
     stopAllShaderLoops();
     for (const unsub of _liveUnsubs) { try { unsub(); } catch(e) {} }
     _liveUnsubs = [];
 }
 
-function setupLiveData() {
+async function setupLiveData() {
     teardownLiveData();
     if (!window.WidgetAPI) return;
 
@@ -83,6 +85,10 @@ function setupLiveData() {
         const el = document.querySelector(`.comp[data-id="${comp.id}"] .shader-canvas`);
         if (el) startShaderLoop(el, resolveShaderGlsl(comp));
     }
+
+    // Register and start custom data sources
+    await registerSources();
+    startSourceListeners();
 }
 
 function updateLiveElements(data) {

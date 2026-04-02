@@ -159,12 +159,14 @@ function generateWidgetFiles(name, moduleId, width, height) {
     const permissions = [...events.map(e => 'flux:event:' + e)];
 
     // module.json
+    const customSources = _ctx.getSources ? _ctx.getSources() : [];
     const moduleJson = JSON.stringify({
         id: moduleId,
         name,
         entry: 'index.html',
         window: { width, height, transparent: true, decorations: false, resizable: true },
         permissions,
+        dataSources: customSources,
     }, null, 2);
 
     const cssVar = v => (v && v.paletteVar) ? `var(--${v.paletteVar})` : v;
@@ -322,6 +324,24 @@ ${compsHtml}
             logicLines.push(`api.system.subscribe('${ev}', d => {\n  Object.assign(_latestData, d);\n${body}\n});`);
         }
     }
+
+    // Custom data source event handlers
+    const customSrcsList = _ctx.getSources ? _ctx.getSources() : [];
+    customSrcsList.forEach(s => {
+        const customComps = comps.filter(c => c.props && c.props.source === s.name);
+        if (customComps.length === 0) return;
+        const body = customComps.map(comp => {
+            if (comp.type === 'metric') {
+                return `  const el${comp.id} = document.getElementById('val-${comp.id}'); if (el${comp.id}) el${comp.id}.textContent = val + '${comp.props.suffix || ''}';`;
+            } else if (comp.type === 'progressbar') {
+                return `  const pb${comp.id} = document.getElementById('pb-${comp.id}'); if (pb${comp.id}) pb${comp.id}.style.width = Math.min(100,parseFloat(val)||0).toFixed(1) + '%';`;
+            }
+            return '';
+        }).filter(Boolean).join('\n');
+        if (body) {
+            logicLines.push(`api.on('custom-data:${s.name}', val => {\n${body}\n});`);
+        }
+    });
 
     if (clockComps.length > 0 || clockTextComps.length > 0) {
         let clockBody = clockComps.map(c => `  const ck${c.id} = document.getElementById('clk-${c.id}'); if (ck${c.id}) ck${c.id}.textContent = fmt(ck${c.id}.dataset.format, ck${c.id}.dataset.tz);`).join('\n');

@@ -608,3 +608,20 @@ input[type="range"].prop-input {
     width: 100%;
     height: 100%;
 }
+
+/* ── Sources panel ─────────────────────────────────────────────────────────── */
+.sources-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.source-row { display: flex; flex-direction: column; background: #1a1a2e; border-radius: 4px; padding: 5px 7px; }
+.source-row-main { display: flex; align-items: center; gap: 6px; }
+.source-row-actions { display: flex; gap: 4px; margin-top: 3px; }
+.source-name { flex: 1; font-size: 12px; font-family: monospace; color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-live-val { font-size: 11px; color: #00bfff; font-family: monospace; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-badge { font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 2px; flex-shrink: 0; }
+.badge-shell { background: #2a2a0a; color: #ffcc00; }
+.badge-http  { background: #0a2a2a; color: #00cccc; }
+.source-edit-btn, .source-del-btn { font-size: 12px; padding: 1px 5px; background: transparent; border: 1px solid #333; border-radius: 2px; cursor: pointer; color: #aaa; }
+.source-edit-btn:hover { color: #00bfff; border-color: #00bfff; }
+.source-del-btn:hover  { color: #ff4444; border-color: #ff4444; }
+.source-form { display: flex; flex-direction: column; gap: 0; }
+.preset-picker, .preset-config { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px; margin-bottom: 6px; }
+.preset-option:hover { background: #1a2a3a !important; }

@@ -303,7 +303,15 @@ function propCheck(label, key, val) {
     return propRow(label, `<input class="prop-input" type="checkbox" data-prop="${escHtml(key)}" ${val ? 'checked' : ''}>`);
 }
 function propSource(label, key, val) {
-    const opts = DATA_SOURCES.map(s => `<option value="${escHtml(s.key)}" ${s.key === val ? 'selected' : ''}>${escHtml(s.label)}</option>`).join('');
+    let opts = DATA_SOURCES.map(s => `<option value="${escHtml(s.key)}" ${s.key === val ? 'selected' : ''}>${escHtml(s.label)}</option>`).join('');
+    const customSrcs = _ctx && _ctx.getSources ? _ctx.getSources() : [];
+    if (customSrcs.length > 0) {
+        opts += `<optgroup label="Custom Sources">`;
+        customSrcs.forEach(s => {
+            opts += `<option value="${escHtml(s.name)}" ${s.name === val ? 'selected' : ''}>${escHtml(s.name)}</option>`;
+        });
+        opts += `</optgroup>`;
+    }
     return propRow(label, `<select class="prop-input" data-prop="${escHtml(key)}">${opts}</select>`);
 }
 
