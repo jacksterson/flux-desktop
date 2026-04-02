@@ -860,9 +860,8 @@ fn launch_module_window(id: &str, app: &AppHandle, state: &AppState) -> Result<(
         .skip_taskbar(true)
         .shadow(false);
 
-    if let Some(b) = &saved {
-        builder = builder.inner_size(b.width, b.height);
-    } else {
+    // inner_size set via post-build set_size(Physical) to avoid logical/physical mismatch on HiDPI
+    if saved.is_none() {
         builder = builder.inner_size(win_config.width, win_config.height);
     }
 
@@ -964,9 +963,8 @@ async fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> 
             .skip_taskbar(true)
             .shadow(false);
 
-        if let Some(b) = &saved {
-            builder = builder.inner_size(b.width, b.height);
-        } else {
+        // inner_size set via post-build set_size(Physical) to avoid logical/physical mismatch on HiDPI
+        if saved.is_none() {
             builder = builder.inner_size(350.0, 500.0);
         }
 
