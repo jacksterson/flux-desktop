@@ -11,6 +11,10 @@ function sanitizeCssColor(v) {
     return typeof v === 'string' ? v.replace(/[^a-zA-Z0-9#().,%\- ]/g, '') : '';
 }
 
+function sanitizeFontName(name) {
+    return (name || '').replace(/[^a-zA-Z0-9 \-_]/g, '').trim() || 'Font';
+}
+
 function slugify(s) {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-widget';
 }
@@ -156,7 +160,7 @@ function collectAssetRefs(files) {
     const allText = Object.values(files).join('\n');
 
     // flux://asset/<filename> references in HTML/CSS/JS
-    const assetPattern = /flux:\/\/asset\/([^"'\s)]+)/g;
+    const assetPattern = /flux:\/\/asset\/([^"')]+?)(?=["'\s)]|$)/g;
     let m;
     while ((m = assetPattern.exec(allText)) !== null) {
         const filename = m[1];
@@ -239,14 +243,15 @@ function generateWidgetFiles(name, moduleId, width, height) {
             .filter(f => !['monospace','sans-serif','serif','cursive','fantasy'].includes(f))
     );
     const fontFaceRules = [...usedFonts].map(name => {
+        const sanitized = sanitizeFontName(name);
         const extensions = ['woff2', 'woff', 'otf', 'ttf'];
-        for (const ext of extensions) {
-            const filename = `${name}.${ext}`;
+        const srcs = extensions.map(ext => {
+            const filename = `${sanitized}.${ext}`;
             const format = ext === 'ttf' ? 'truetype' : ext === 'otf' ? 'opentype' : ext;
-            return `@font-face { font-family: '${name}'; src: url('./assets/${filename}') format('${format}'); }`;
-        }
-        return '';
-    }).filter(Boolean).join('\n');
+            return `url('./assets/${filename}') format('${format}')`;
+        }).join(', ');
+        return `@font-face { font-family: '${sanitized}'; src: ${srcs}; }`;
+    }).join('\n');
 
     const fullCss = (fontFaceRules ? fontFaceRules + '\n\n' : '') + generatePaletteCSS() + '\n\n' + cssRules + (rawCssRules ? '\n\n/* Raw HTML component styles */\n' + rawCssRules : '');
 
