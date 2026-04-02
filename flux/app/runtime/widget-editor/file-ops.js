@@ -203,6 +203,7 @@ function generateWidgetFiles(name, moduleId, width, height) {
         window: { width, height, transparent: true, decorations: false, resizable: true },
         permissions,
         dataSources: customSources,
+        allowOffscreen: _ctx.store.allowOffscreen || false,
     }, null, 2);
 
     const cssVar = v => (v && v.paletteVar) ? `var(--${v.paletteVar})` : v;

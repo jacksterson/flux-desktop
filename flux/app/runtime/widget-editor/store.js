@@ -14,6 +14,7 @@ export class ComponentStore {
     constructor() {
         this._components = []; // [{id, type, x, y, width, height, opacity, visible, zIndex, props}]
         this._nextZ = 0;
+        this._allowOffscreen = false;
     }
 
     _genId() {
@@ -79,12 +80,14 @@ export class ComponentStore {
                 height: parseInt(document.getElementById('canvas-height').value),
                 background: document.getElementById('canvas').style.backgroundColor || '#0A0F1A',
             },
+            allowOffscreen: this._allowOffscreen || false,
             components: this._components,
         });
     }
 
     deserialize(json, updateCanvasSizeFn) {
         const data = JSON.parse(json);
+        this._allowOffscreen = data.allowOffscreen || false;
         this._components = data.components || [];
         this._nextZ = this._components.reduce((m, c) => Math.max(m, c.zIndex + 1), 0);
         if (data.canvas) {
@@ -94,6 +97,9 @@ export class ComponentStore {
             if (updateCanvasSizeFn) updateCanvasSizeFn();
         }
     }
+
+    get allowOffscreen() { return this._allowOffscreen || false; }
+    set allowOffscreen(v) { this._allowOffscreen = !!v; }
 }
 
 // ── HistoryStack ──────────────────────────────────────────────────────────────

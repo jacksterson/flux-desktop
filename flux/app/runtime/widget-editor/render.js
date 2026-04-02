@@ -135,6 +135,7 @@ function renderCanvas() {
     }
 
     _ctx.setupLiveData().catch(e => console.error('[live-data] setupLiveData failed:', e));
+    renderCanvasSettings();
 }
 
 function renderComponentContent(el, comp) {
@@ -663,6 +664,22 @@ function updateCanvasSize() {
     renderCanvas();
 }
 
+// ── Canvas settings (allow-offscreen checkbox) ────────────────────────────────
+
+let _offscreenListenerWired = false;
+function renderCanvasSettings() {
+    const cb = document.getElementById('prop-allow-offscreen');
+    if (!cb) return;
+    cb.checked = _ctx.store.allowOffscreen;
+    if (!_offscreenListenerWired) {
+        cb.addEventListener('change', function() {
+            _ctx.store.allowOffscreen = this.checked;
+            _ctx.pushHistory();
+        });
+        _offscreenListenerWired = true;
+    }
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 
 function showToast(message, type = 'info') {
@@ -683,5 +700,5 @@ export {
     snapVal, renderCanvas, renderComponentContent, escHtml, selectComponent,
     renderComponentsPanel, propRow, propNumber, propText, propColor, propRange,
     propSelect, propCheck, propSource, applyPropChange, renderProperties,
-    reorderLayer, renderLayers, updateCanvasSize, showToast,
+    reorderLayer, renderLayers, updateCanvasSize, showToast, renderCanvasSettings,
 };

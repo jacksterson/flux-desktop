@@ -75,6 +75,8 @@ pub struct ModuleManifest {
     pub active: bool,
     #[serde(default)]
     pub settings: Vec<SettingDef>,
+    #[serde(default)]
+    pub allow_offscreen: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -929,6 +931,13 @@ fn launch_module_window(id: &str, app: &AppHandle, state: &AppState) -> Result<(
     if let Some(b) = &saved {
         let _ = window.set_position(tauri::PhysicalPosition::new(b.x as i32, b.y as i32));
         let _ = window.set_size(tauri::PhysicalSize::new(b.width as u32, b.height as u32));
+    }
+
+    // Apply allow_offscreen from manifest to saved WindowBounds
+    {
+        let mut p = state.persistent.lock().unwrap();
+        let bounds = p.windows.entry(id.to_string()).or_insert_with(WindowBounds::default);
+        bounds.allow_offscreen = manifest.allow_offscreen;
     }
 
     let saved_margins = state.persistent.lock().unwrap()
