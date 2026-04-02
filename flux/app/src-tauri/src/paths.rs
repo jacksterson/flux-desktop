@@ -45,6 +45,37 @@ pub fn flux_module_settings_dir() -> PathBuf {
     flux_user_data_dir().join("settings")
 }
 
+/// Returns ~/.local/share/flux/assets — global widget asset library.
+pub fn flux_assets_dir() -> PathBuf {
+    flux_user_data_dir().join("assets")
+}
+
+/// Returns ~/.local/share/flux/assets/fonts
+pub fn flux_assets_fonts_dir() -> PathBuf {
+    flux_assets_dir().join("fonts")
+}
+
+/// Returns ~/.local/share/flux/assets/images
+pub fn flux_assets_images_dir() -> PathBuf {
+    flux_assets_dir().join("images")
+}
+
+/// Returns ~/.local/share/flux/assets/other
+pub fn flux_assets_other_dir() -> PathBuf {
+    flux_assets_dir().join("other")
+}
+
+/// Returns the correct asset subdirectory for a given category string.
+/// Returns None if the category is unrecognised.
+pub fn flux_assets_category_dir(category: &str) -> Option<PathBuf> {
+    match category {
+        "fonts"  => Some(flux_assets_fonts_dir()),
+        "images" => Some(flux_assets_images_dir()),
+        "other"  => Some(flux_assets_other_dir()),
+        _ => None,
+    }
+}
+
 /// Creates ~/Flux/modules, ~/Flux/skins, ~/.local/share/flux/themes, and
 /// ~/.local/share/flux/settings if they do not exist.
 /// Called once at app startup.
@@ -53,6 +84,9 @@ pub fn ensure_flux_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(flux_skins_dir())?;
     std::fs::create_dir_all(flux_user_themes_dir())?;
     std::fs::create_dir_all(flux_module_settings_dir())?;
+    std::fs::create_dir_all(flux_assets_fonts_dir())?;
+    std::fs::create_dir_all(flux_assets_images_dir())?;
+    std::fs::create_dir_all(flux_assets_other_dir())?;
     Ok(())
 }
 
@@ -109,5 +143,28 @@ mod tests {
         let data = flux_user_data_dir();
         assert!(result.starts_with(&data), "settings dir {:?} should be under {:?}", result, data);
         assert_eq!(result.file_name().unwrap(), "settings");
+    }
+
+    #[test]
+    fn flux_assets_dir_is_under_local_share_flux() {
+        let result = flux_assets_dir();
+        let data = flux_user_data_dir();
+        assert!(result.starts_with(&data));
+        assert_eq!(result.file_name().unwrap(), "assets");
+    }
+
+    #[test]
+    fn flux_assets_fonts_dir_is_under_assets() {
+        let result = flux_assets_fonts_dir();
+        assert!(result.starts_with(flux_assets_dir()));
+        assert_eq!(result.file_name().unwrap(), "fonts");
+    }
+
+    #[test]
+    fn ensure_flux_dirs_creates_asset_dirs() {
+        ensure_flux_dirs().expect("should not fail");
+        assert!(flux_assets_fonts_dir().exists());
+        assert!(flux_assets_images_dir().exists());
+        assert!(flux_assets_other_dir().exists());
     }
 }

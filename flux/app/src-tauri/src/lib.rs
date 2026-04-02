@@ -1,4 +1,5 @@
 mod desktop_layer;
+pub mod assets;
 pub mod config;
 use config::{EngineConfig, read_config, write_config, config_exists};
 pub mod metrics;
