@@ -507,13 +507,8 @@ function renderProperties() {
         _ctx.pushHistory();
         _ctx.renderCanvas();
     });
-    document.getElementById('prop-img-fit')?.addEventListener('change', function() {
-        _ctx.store.updateProps(_ctx.primaryId, { objectFit: this.value });
-        _ctx.pushHistory();
-        _ctx.renderCanvas();
-    });
     document.getElementById('prop-img-pick')?.addEventListener('click', () => {
-        import('./asset-manager.js').then(({ openAssetManager }) => openAssetManager());
+        import('./asset-manager.js').then(({ openAssetManager }) => openAssetManager()).catch(err => console.error('[image pick]', err));
     });
 
     // Wire up change events
