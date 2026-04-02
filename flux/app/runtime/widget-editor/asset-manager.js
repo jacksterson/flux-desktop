@@ -98,6 +98,7 @@ async function renderTab(tab) {
 }
 
 async function renderLibraryTab(content) {
+    if (!_ctx) { content.innerHTML = '<p style="color:#888;padding:8px;">Not initialized.</p>'; return; }
     content.innerHTML = '<p style="color:#888;font-size:12px;padding:8px;">Loading…</p>';
     try {
         const [fonts, images, other] = await Promise.all([
@@ -111,7 +112,10 @@ async function renderLibraryTab(content) {
         content.appendChild(buildCategorySection('Other',  other,  'library', 'other'));
         wireImportButton(content, 'library');
     } catch (e) {
-        content.innerHTML = `<p style="color:#ff4444;padding:8px;">Error loading library: ${e}</p>`;
+        const errEl = document.createElement('p');
+        errEl.style.cssText = 'color:#ff4444;padding:8px;';
+        errEl.textContent = 'Error loading library: ' + e;
+        content.appendChild(errEl);
     }
 }
 
@@ -157,13 +161,18 @@ function buildCategorySection(label, items, source, category) {
     section.querySelectorAll('.asset-del-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             if (!confirm(`Remove ${btn.dataset.filename}?`)) return;
-            if (btn.dataset.source === 'library') {
-                await _ctx.invoke('delete_asset', { category: btn.dataset.category, filename: btn.dataset.filename });
-            } else {
-                delete _localAssets[btn.dataset.filename];
-                _ctx?.pushHistory();
+            try {
+                if (btn.dataset.source === 'library') {
+                    if (!_ctx) return;
+                    await _ctx.invoke('delete_asset', { category: btn.dataset.category, filename: btn.dataset.filename });
+                } else {
+                    delete _localAssets[btn.dataset.filename];
+                    _ctx?.pushHistory();
+                }
+                renderTab(btn.dataset.source === 'library' ? 'library' : 'widget');
+            } catch (e) {
+                _ctx?.showToast('Delete failed: ' + e, 'error');
             }
-            renderTab(btn.dataset.source === 'library' ? 'library' : 'widget');
         });
     });
 
@@ -185,11 +194,11 @@ function buildCategorySection(label, items, source, category) {
 }
 
 function previewHtml(filename, category) {
-    const safeName = String(filename).replace(/['"]/g, '');
     if (category === 'images') {
         return `<span style="font-size:20px;">🖼</span>`;
     } else if (category === 'fonts') {
-        return `<span style="font-size:14px;font-family:'${safeName.replace(/\.[^.]+$/, '')}',monospace;">Aa</span>`;
+        const safeName = String(filename).replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '');
+        return `<span style="font-size:14px;font-family:'${safeName}',monospace;">Aa</span>`;
     }
     return `<span style="font-size:14px;color:#888;">📄</span>`;
 }
@@ -226,7 +235,13 @@ async function handleImport(destination) {
                 const filename = p.split(/[/\\]/).pop();
                 const category = categoryFromFilename(filename);
                 const mime = mimeFromFilename(filename);
-                const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+                let binary = '';
+                const chunk = 8192;
+                const ua = new Uint8Array(bytes);
+                for (let i = 0; i < ua.length; i += chunk) {
+                    binary += String.fromCharCode(...ua.subarray(i, i + chunk));
+                }
+                const b64 = btoa(binary);
                 const dataUrl = `data:${mime};base64,${b64}`;
                 const sizeBytes = bytes.byteLength;
                 _localAssets[filename] = { dataUrl, category, sizeBytes };
