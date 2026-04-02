@@ -1,47 +1,57 @@
 const { invoke } = window.__TAURI__.core;
 
 async function loadMonitors() {
-    const monitors = await invoke('get_monitors');
     const el = document.getElementById('monitor-list');
-    if (monitors.length === 0) {
-        el.innerHTML = '<p class="empty-state">No monitors detected.</p>';
-        return;
+    try {
+        const monitors = await invoke('get_monitors');
+        if (monitors.length === 0) {
+            el.innerHTML = '<p class="empty-state">No monitors detected.</p>';
+            return;
+        }
+        el.innerHTML = monitors.map((m) =>
+            `<div class="monitor-row">
+                <span class="monitor-name">${escHtml(m.name)}</span>
+                <span class="monitor-res">${escHtml(String(m.width))}×${escHtml(String(m.height))}</span>
+                ${m.x === 0 && m.y === 0 ? '<span class="monitor-badge">Primary</span>' : ''}
+            </div>`
+        ).join('');
+    } catch (e) {
+        el.innerHTML = '<p class="empty-state">Failed to load monitors.</p>';
+        console.error('get_monitors failed:', e);
     }
-    el.innerHTML = monitors.map((m) =>
-        `<div class="monitor-row">
-            <span class="monitor-name">${escHtml(m.name)}</span>
-            <span class="monitor-res">${m.width}×${m.height}</span>
-            ${m.x === 0 && m.y === 0 ? '<span class="monitor-badge">Primary</span>' : ''}
-        </div>`
-    ).join('');
 }
 
 async function loadOffscreenWidgets() {
-    const ids = await invoke('get_offscreen_widgets');
     const el = document.getElementById('offscreen-list');
-    if (ids.length === 0) {
-        el.innerHTML = '<p class="empty-state">All widgets are on-screen.</p>';
-        return;
-    }
-    el.innerHTML = '<div class="offscreen-table">' +
-        ids.map(id =>
-            `<div class="offscreen-row">
-                <span class="offscreen-id">${escHtml(id)}</span>
-                <button class="btn-recover btn-secondary" data-id="${escHtml(id)}">Move to primary</button>
-            </div>`
-        ).join('') +
-        '</div>';
+    try {
+        const ids = await invoke('get_offscreen_widgets');
+        if (ids.length === 0) {
+            el.innerHTML = '<p class="empty-state">All widgets are on-screen.</p>';
+            return;
+        }
+        el.innerHTML = '<div class="offscreen-table">' +
+            ids.map(id =>
+                `<div class="offscreen-row">
+                    <span class="offscreen-id">${escHtml(id)}</span>
+                    <button class="btn-recover btn-secondary" data-id="${escHtml(id)}">Move to primary</button>
+                </div>`
+            ).join('') +
+            '</div>';
 
-    el.querySelectorAll('.btn-recover').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            try {
-                await invoke('recover_widget', { id: btn.dataset.id });
-                await loadOffscreenWidgets();
-            } catch (e) {
-                console.error('recover_widget failed:', e);
-            }
+        el.querySelectorAll('.btn-recover').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await invoke('recover_widget', { id: btn.dataset.id });
+                    await loadOffscreenWidgets();
+                } catch (e) {
+                    console.error('recover_widget failed:', e);
+                }
+            });
         });
-    });
+    } catch (e) {
+        el.innerHTML = '<p class="empty-state">Failed to load widget list.</p>';
+        console.error('get_offscreen_widgets failed:', e);
+    }
 }
 
 document.getElementById('btn-bring-all').addEventListener('click', async () => {
