@@ -1,0 +1,27 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: monospace; font-size: 13px; }
+
+.prefs-container { padding: 20px 24px; max-width: 480px; }
+.prefs-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; color: #fff; }
+
+.prefs-section { margin-bottom: 28px; }
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 10px; }
+.section-desc { font-size: 11px; color: #666; margin-bottom: 8px; }
+
+.monitor-list { margin-bottom: 12px; }
+.monitor-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1c2128; }
+.monitor-name { color: #e6edf3; flex: 1; }
+.monitor-res { color: #666; font-size: 11px; }
+.monitor-badge { font-size: 10px; background: #1a3a4a; color: #00bfff; border-radius: 3px; padding: 1px 5px; }
+
+.btn-primary { background: #00bfff; color: #000; border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-family: monospace; }
+.btn-primary:hover { background: #33ccff; }
+.btn-secondary { background: transparent; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-family: monospace; }
+.btn-secondary:hover { border-color: #00bfff; color: #00bfff; }
+
+.result-msg { margin-top: 8px; font-size: 11px; color: #00bfff; }
+.empty-state { color: #555; font-size: 11px; padding: 4px 0; }
+
+.offscreen-table { display: flex; flex-direction: column; gap: 6px; }
+.offscreen-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; background: #1a1a2e; border: 1px solid #30363d; border-radius: 4px; }
+.offscreen-id { color: #e6edf3; font-size: 12px; }
