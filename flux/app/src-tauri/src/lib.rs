@@ -206,9 +206,62 @@ pub struct AppState {
     pub config: Mutex<EngineConfig>,
     pub config_path: PathBuf,
     pub custom_broker: CustomDataBroker,
+    /// IDs of widgets currently positioned off all monitors.
+    pub offscreen_widgets: Mutex<Vec<String>>,
+    /// Startup notification text set if any widgets were auto-recovered; consumed on first read.
+    pub startup_toast: Mutex<Option<String>>,
 }
 
 // --- Commands ---
+
+/// Checks all active widget windows. Moves off-screen widgets (where allow_offscreen is false)
+/// to (primary.x + 20, primary.y + 20). Returns the number of widgets moved.
+fn check_and_recover_offscreen_widgets(app: &AppHandle, state: &AppState) -> usize {
+    let ms = monitors::collect_monitors(app);
+    let Some(primary) = monitors::primary_monitor(&ms) else { return 0; };
+    let recover_x = primary.x + 20;
+    let recover_y = primary.y + 20;
+    let primary_fp = monitors::monitor_fingerprint(primary);
+
+    let window_ids: Vec<String> = {
+        let p = state.persistent.lock().unwrap();
+        p.windows.keys().cloned().collect()
+    };
+
+    let mut moved = 0;
+    let mut offscreen_ids: Vec<String> = Vec::new();
+
+    for id in &window_ids {
+        let bounds = {
+            let p = state.persistent.lock().unwrap();
+            p.windows.get(id).cloned()
+        };
+        let Some(bounds) = bounds else { continue; };
+
+        let offscreen = monitors::is_topleft_offscreen(bounds.x as i32, bounds.y as i32, &ms);
+        if offscreen {
+            offscreen_ids.push(id.clone());
+        }
+
+        if offscreen && !bounds.allow_offscreen {
+            if let Some(window) = app.get_webview_window(id) {
+                let _ = window.set_position(tauri::PhysicalPosition::new(recover_x, recover_y));
+            }
+            {
+                let mut p = state.persistent.lock().unwrap();
+                if let Some(b) = p.windows.get_mut(id) {
+                    b.x = recover_x as f64;
+                    b.y = recover_y as f64;
+                    b.monitor = Some(primary_fp.clone());
+                }
+            }
+            moved += 1;
+        }
+    }
+
+    *state.offscreen_widgets.lock().unwrap() = offscreen_ids;
+    moved
+}
 
 /// Scan a single modules directory, appending discovered manifests to `modules`.
 /// Modules whose IDs are already in `seen_ids` are skipped (first-found wins).
@@ -1088,6 +1141,79 @@ fn is_layer_shell_window(window: WebviewWindow, state: State<'_, AppState>) -> b
     }
 }
 
+#[tauri::command]
+fn get_monitors(app: AppHandle) -> Vec<monitors::MonitorInfo> {
+    monitors::collect_monitors(&app)
+}
+
+#[tauri::command]
+fn bring_all_to_screen(app: AppHandle, state: State<'_, AppState>) -> usize {
+    check_and_recover_offscreen_widgets(&app, &state)
+}
+
+#[tauri::command]
+fn move_widget_to_monitor(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    monitor_index: usize,
+) -> Result<(), String> {
+    let ms = monitors::collect_monitors(&app);
+    let m = ms.get(monitor_index)
+        .ok_or_else(|| format!("monitor index {} out of range", monitor_index))?;
+    let x = m.x + 20;
+    let y = m.y + 20;
+    let window = app.get_webview_window(&id)
+        .ok_or_else(|| format!("window '{}' not found", id))?;
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    {
+        let mut p = state.persistent.lock().unwrap();
+        if let Some(b) = p.windows.get_mut(&id) {
+            b.x = x as f64;
+            b.y = y as f64;
+            b.monitor = Some(monitors::monitor_fingerprint(m));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_offscreen_widgets(state: State<'_, AppState>) -> Vec<String> {
+    state.offscreen_widgets.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn recover_widget(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let ms = monitors::collect_monitors(&app);
+    let primary = monitors::primary_monitor(&ms)
+        .ok_or_else(|| "no monitors found".to_string())?;
+    let x = primary.x + 20;
+    let y = primary.y + 20;
+    let window = app.get_webview_window(&id)
+        .ok_or_else(|| format!("window '{}' not found", id))?;
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    {
+        let mut p = state.persistent.lock().unwrap();
+        if let Some(b) = p.windows.get_mut(&id) {
+            b.x = x as f64;
+            b.y = y as f64;
+            b.monitor = Some(monitors::monitor_fingerprint(primary));
+        }
+    }
+    // Remove from offscreen list
+    state.offscreen_widgets.lock().unwrap().retain(|i| i != &id);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_and_clear_startup_toast(state: State<'_, AppState>) -> Option<String> {
+    state.startup_toast.lock().unwrap().take()
+}
+
 fn setup_panic_log() {
     let log_path = flux_user_dir().join("crash.log");
     let default_hook = std::panic::take_hook();
@@ -1303,6 +1429,8 @@ pub fn run() {
                 config: Mutex::new(engine_config),
                 config_path: config_path.clone(),
                 custom_broker: CustomDataBroker::new(),
+                offscreen_widgets: Mutex::new(Vec::new()),
+                startup_toast: Mutex::new(None),
             });
 
             // System tray
@@ -1385,6 +1513,15 @@ pub fn run() {
                         eprintln!("[flux] Warning: could not launch '{}' on startup: {}", id, e);
                     }
                 }
+                let recovered = check_and_recover_offscreen_widgets(&handle, &state);
+                if recovered > 0 {
+                    let msg = format!(
+                        "{} widget{} off-screen and moved to your primary monitor.",
+                        recovered,
+                        if recovered == 1 { " was" } else { " were" }
+                    );
+                    *state.startup_toast.lock().unwrap() = Some(msg);
+                }
             }
 
             Ok(())
@@ -1404,6 +1541,8 @@ pub fn run() {
             open_widget_editor, save_fluxwidget, load_fluxwidget, export_widget_package,
             register_custom_sources, test_custom_source,
             list_assets, import_asset, delete_asset, get_asset_data_url,
+            get_monitors, bring_all_to_screen, move_widget_to_monitor,
+            get_offscreen_widgets, recover_widget, get_and_clear_startup_toast,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -1742,5 +1881,20 @@ mod tests {
 
         assert_eq!(original, loaded);
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn offscreen_check_identifies_out_of_bounds_window() {
+        use crate::monitors::{MonitorInfo, is_topleft_offscreen};
+        let monitors = vec![MonitorInfo {
+            name: "DP-1".to_string(), width: 2560, height: 1440,
+            x: 0, y: 0, scale_factor: 1.0,
+        }];
+        // On-screen
+        assert!(!is_topleft_offscreen(100, 100, &monitors));
+        // Off right edge
+        assert!(is_topleft_offscreen(3000, 100, &monitors));
+        // Off bottom
+        assert!(is_topleft_offscreen(100, 1500, &monitors));
     }
 }
