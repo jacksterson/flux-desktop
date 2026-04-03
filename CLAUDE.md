@@ -10,7 +10,7 @@
   Obsidian vault = long-term project memory (intent, decisions, history)
   jCodemunch = short-term precise code memory (symbols, functions, structure)
 
-  READ RULE: Before any architectural suggestion, multi-step plan, or new phase work:
+  READ RULE: Before any architectural suggestion, multi-step plan, new phase work, or non-trivial code change:
     1. Read VAULT_PATH/Projects/kickoff-<project>.md
     2. Grep VAULT_PATH/Projects/ for session notes matching the current topic
     3. Query jCodemunch for current code state
@@ -22,3 +22,4 @@
         ## What was built, ## Key decisions, ## What changed from the plan, ## Next
     - If Obsidian is running: use obsidian-cli skill (obsidian create or obsidian append)
     - If Obsidian is not running: use Write tool directly to VAULT_PATH/Projects/
+    - Skip write-back if the session produced no commits and no finalized design decisions.
