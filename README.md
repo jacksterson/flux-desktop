@@ -107,7 +107,7 @@ Flux is built by one developer. If it's useful to you, Ko-fi sponsorships and Gi
 
 Early sponsors get early access to the **Koji Suite** — a cinematic widget pack inspired by gaming aesthetics, and the first official pack built for Flux.
 
-**[Support on Ko-fi](https://ko-fi.com)** <!-- replace with your link -->
+**[Support on Ko-fi][https://ko-fi.com](https://ko-fi.com/fluxdesktop)** <!-- replace with your link -->
 
 ---
 
