@@ -76,5 +76,52 @@ function escHtml(s) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+async function loadPerformanceConfig() {
+    try {
+        const cfg = await invoke('get_performance_config');
+        const check = document.getElementById('battery-saver-check');
+        const intervalInput = document.getElementById('battery-interval-input');
+        const intervalRow = document.getElementById('battery-interval-row');
+        const normalLabel = document.getElementById('normal-interval-label');
+        check.checked = cfg.battery_saver;
+        intervalInput.value = cfg.battery_interval_ms;
+        normalLabel.textContent = `Normal interval: ${cfg.broadcast_interval_ms} ms`;
+        intervalRow.style.opacity = cfg.battery_saver ? '1' : '0.5';
+        intervalInput.disabled = !cfg.battery_saver;
+    } catch (e) {
+        console.error('get_performance_config failed:', e);
+    }
+}
+
+document.getElementById('battery-saver-check').addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    const intervalInput = document.getElementById('battery-interval-input');
+    const intervalRow = document.getElementById('battery-interval-row');
+    const resultEl = document.getElementById('perf-result');
+    intervalRow.style.opacity = enabled ? '1' : '0.5';
+    intervalInput.disabled = !enabled;
+    try {
+        await invoke('set_battery_saver', { enabled });
+    } catch (err) {
+        resultEl.textContent = 'Error: ' + err;
+        resultEl.style.display = 'block';
+        setTimeout(() => { resultEl.style.display = 'none'; }, 3000);
+    }
+});
+
+document.getElementById('battery-interval-input').addEventListener('change', async (e) => {
+    const ms = parseInt(e.target.value, 10);
+    if (isNaN(ms) || ms < 500) { e.target.value = 500; return; }
+    const resultEl = document.getElementById('perf-result');
+    try {
+        await invoke('set_battery_interval', { ms });
+    } catch (err) {
+        resultEl.textContent = 'Error: ' + err;
+        resultEl.style.display = 'block';
+        setTimeout(() => { resultEl.style.display = 'none'; }, 3000);
+    }
+});
+
 loadMonitors();
 loadOffscreenWidgets();
+loadPerformanceConfig();

@@ -22,6 +22,23 @@
       <p class="section-desc">Widgets positioned off all connected monitors.</p>
       <div id="offscreen-list"></div>
     </section>
+
+    <section class="prefs-section">
+      <h2 class="section-title">Performance</h2>
+      <div class="pref-row">
+        <label class="pref-checkbox-label">
+          <input type="checkbox" id="battery-saver-check">
+          Battery saver (auto)
+        </label>
+        <p class="section-desc">Reduces polling rate when running on battery.</p>
+      </div>
+      <div class="pref-row" id="battery-interval-row">
+        <label class="pref-label" for="battery-interval-input">Battery polling interval (ms)</label>
+        <input type="number" id="battery-interval-input" class="pref-number" min="500" max="60000" step="500">
+        <span id="normal-interval-label" class="pref-hint"></span>
+      </div>
+      <div id="perf-result" class="result-msg" style="display:none;"></div>
+    </section>
   </div>
   <script type="module" src="app.js"></script>
 </body>
