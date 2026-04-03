@@ -852,6 +852,7 @@ fn track_window(window: WebviewWindow) {
         if let WindowEvent::CloseRequested { .. } = event {
             let state = app_handle.state::<AppState>();
             unregister_all_metric_interest(&state, &label);
+            alerts::unregister_widget_alerts(&state, &label);
         }
         if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
             let state = app_handle.state::<AppState>();
@@ -1315,7 +1316,43 @@ fn get_performance_config(state: State<'_, AppState>) -> serde_json::Value {
         "battery_saver": cfg.engine.battery_saver,
         "battery_interval_ms": cfg.engine.battery_interval_ms,
         "broadcast_interval_ms": cfg.engine.broadcast_interval_ms,
+        "history_depth": cfg.engine.history_depth,
     })
+}
+
+#[tauri::command]
+fn get_metric_history(
+    state: State<'_, AppState>,
+    metric: String,
+    n: usize,
+) -> Vec<serde_json::Value> {
+    let hist = state.metric_history.lock().unwrap();
+    let depth = state.config.lock().unwrap().engine.history_depth;
+    let n = n.min(depth);
+    if let Some(deque) = hist.get(&metric) {
+        let skip = deque.len().saturating_sub(n);
+        deque.iter().skip(skip).cloned().collect()
+    } else {
+        Vec::new()
+    }
+}
+
+#[tauri::command]
+fn set_history_depth(state: State<'_, AppState>, depth: usize) -> Result<(), String> {
+    let depth = depth.clamp(30, 300);
+    let mut cfg = state.config.lock().unwrap();
+    cfg.engine.history_depth = depth;
+    // Trim existing history buffers to new depth
+    drop(cfg);
+    {
+        let new_depth = state.config.lock().unwrap().engine.history_depth;
+        let mut hist = state.metric_history.lock().unwrap();
+        for deque in hist.values_mut() {
+            while deque.len() > new_depth { deque.pop_front(); }
+        }
+    }
+    let cfg = state.config.lock().unwrap();
+    crate::config::write_config(&state.config_path, &cfg).map_err(|e| e.to_string())
 }
 
 fn setup_panic_log() {
@@ -1673,6 +1710,7 @@ pub fn run() {
 
             Ok(())
         })
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -1692,6 +1730,8 @@ pub fn run() {
             get_offscreen_widgets, recover_widget, get_and_clear_startup_toast,
             register_metric_interest, unregister_metric_interest,
             set_battery_saver, set_battery_interval, get_performance_config,
+            get_metric_history, set_history_depth,
+            alerts::register_alert, alerts::unregister_alert, alerts::get_alerts,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
