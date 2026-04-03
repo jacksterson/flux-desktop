@@ -37,7 +37,74 @@
         <input type="number" id="battery-interval-input" class="pref-number" min="500" max="60000" step="500">
         <span id="normal-interval-label" class="pref-hint"></span>
       </div>
+      <div class="pref-row" id="history-depth-row">
+        <label class="pref-label" for="history-depth-input">History samples</label>
+        <input type="number" id="history-depth-input" class="pref-number" min="30" max="300" step="10">
+        <span class="pref-hint">Samples kept per metric for sparklines. At 2s interval, 60 = 1 minute.</span>
+      </div>
       <div id="perf-result" class="result-msg" style="display:none;"></div>
+    </section>
+
+    <section class="prefs-section">
+      <h2 class="section-title">Alerts</h2>
+      <p class="section-desc">Trigger notifications or callbacks when a metric crosses a threshold for a sustained duration.</p>
+
+      <div id="alert-list"><p class="empty-state">No alerts configured.</p></div>
+
+      <button id="btn-add-alert" class="btn-secondary" style="margin-top:10px;">+ Add Alert</button>
+
+      <form id="alert-form" style="display:none;">
+        <div class="pref-row">
+          <label class="pref-label" for="alert-metric">Metric</label>
+          <select id="alert-metric" class="pref-number">
+            <option value="cpu">CPU</option>
+            <option value="memory">Memory</option>
+            <option value="network">Network</option>
+            <option value="gpu">GPU</option>
+            <option value="disk-io">Disk I/O</option>
+          </select>
+        </div>
+        <div class="pref-row">
+          <label class="pref-label" for="alert-field">Field</label>
+          <select id="alert-field" class="pref-number"></select>
+        </div>
+        <div class="pref-row">
+          <label class="pref-label" for="alert-op">Condition</label>
+          <select id="alert-op" class="pref-number">
+            <option value="gt">&gt;</option>
+            <option value="lt">&lt;</option>
+            <option value="gte">&#8805;</option>
+            <option value="lte">&#8804;</option>
+          </select>
+        </div>
+        <div class="pref-row">
+          <label class="pref-label" for="alert-value">Value</label>
+          <input type="number" id="alert-value" class="pref-number" placeholder="e.g. 90">
+        </div>
+        <div class="pref-row">
+          <label class="pref-label" for="alert-duration">Duration (s)</label>
+          <input type="number" id="alert-duration" class="pref-number" min="1" value="10">
+          <span class="pref-hint">Threshold must be held for this many seconds before firing.</span>
+        </div>
+        <div class="pref-row">
+          <label class="pref-label">Delivery</label>
+          <label class="pref-checkbox-label">
+            <input type="checkbox" id="alert-delivery-notification" checked> Notification
+          </label>
+          <label class="pref-checkbox-label" style="margin-left:12px;">
+            <input type="checkbox" id="alert-delivery-callback"> Callback
+          </label>
+        </div>
+        <div class="pref-row">
+          <label class="pref-label" for="alert-label">Label</label>
+          <input type="text" id="alert-label" class="pref-number" placeholder="e.g. High CPU">
+        </div>
+        <div class="pref-row" style="gap:8px;">
+          <button type="submit" id="btn-alert-submit" class="btn-primary">Save Alert</button>
+          <button type="button" id="btn-alert-cancel" class="btn-secondary">Cancel</button>
+        </div>
+        <div id="alert-result" class="result-msg" style="display:none;"></div>
+      </form>
     </section>
   </div>
   <script type="module" src="app.js"></script>
