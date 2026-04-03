@@ -212,6 +212,10 @@ pub struct AppState {
     pub offscreen_widgets: Mutex<Vec<String>>,
     /// Startup notification text set if any widgets were auto-recovered; consumed on first read.
     pub startup_toast: Mutex<Option<String>>,
+    /// Maps metric category → set of window IDs currently subscribed (e.g. "cpu" → {"widget-1"}).
+    pub metric_subscriptions: Mutex<HashMap<String, HashSet<String>>>,
+    /// Per-window tick counter for hidden-widget emission throttling.
+    pub hidden_widget_ticks: Mutex<HashMap<String, u32>>,
 }
 
 // --- Commands ---
@@ -835,6 +839,10 @@ fn track_window(window: WebviewWindow) {
     let label = window.label().to_string();
     let w = window.clone();
     window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { .. } = event {
+            let state = app_handle.state::<AppState>();
+            unregister_all_metric_interest(&state, &label);
+        }
         if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
             let state = app_handle.state::<AppState>();
 
@@ -1239,6 +1247,67 @@ fn get_and_clear_startup_toast(state: State<'_, AppState>) -> Option<String> {
     state.startup_toast.lock().unwrap().take()
 }
 
+#[tauri::command]
+fn register_metric_interest(
+    state: State<'_, AppState>,
+    window_id: String,
+    categories: Vec<String>,
+) {
+    let mut subs = state.metric_subscriptions.lock().unwrap();
+    for cat in categories {
+        subs.entry(cat).or_insert_with(HashSet::new).insert(window_id.clone());
+    }
+}
+
+#[tauri::command]
+fn unregister_metric_interest(
+    state: State<'_, AppState>,
+    window_id: String,
+    categories: Vec<String>,
+) {
+    let mut subs = state.metric_subscriptions.lock().unwrap();
+    for cat in &categories {
+        if let Some(set) = subs.get_mut(cat) {
+            set.remove(&window_id);
+        }
+    }
+}
+
+/// Removes `window_id` from all subscription sets and clears its tick counter.
+/// Called from WindowEvent::CloseRequested — NOT a Tauri command.
+fn unregister_all_metric_interest(state: &AppState, window_id: &str) {
+    let mut subs = state.metric_subscriptions.lock().unwrap();
+    for set in subs.values_mut() {
+        set.remove(window_id);
+    }
+    drop(subs);
+    state.hidden_widget_ticks.lock().unwrap().remove(window_id);
+}
+
+#[tauri::command]
+fn set_battery_saver(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut cfg = state.config.lock().unwrap();
+    cfg.engine.battery_saver = enabled;
+    write_config(&state.config_path, &cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_battery_interval(state: State<'_, AppState>, ms: u64) -> Result<(), String> {
+    let mut cfg = state.config.lock().unwrap();
+    cfg.engine.battery_interval_ms = ms.max(100);
+    write_config(&state.config_path, &cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_performance_config(state: State<'_, AppState>) -> serde_json::Value {
+    let cfg = state.config.lock().unwrap();
+    serde_json::json!({
+        "battery_saver": cfg.engine.battery_saver,
+        "battery_interval_ms": cfg.engine.battery_interval_ms,
+        "broadcast_interval_ms": cfg.engine.broadcast_interval_ms,
+    })
+}
+
 fn setup_panic_log() {
     let log_path = flux_user_dir().join("crash.log");
     let default_hook = std::panic::take_hook();
@@ -1456,6 +1525,8 @@ pub fn run() {
                 custom_broker: CustomDataBroker::new(),
                 offscreen_widgets: Mutex::new(Vec::new()),
                 startup_toast: Mutex::new(None),
+                metric_subscriptions: Mutex::new(HashMap::new()),
+                hidden_widget_ticks: Mutex::new(HashMap::new()),
             });
 
             // System tray
@@ -1605,6 +1676,8 @@ pub fn run() {
             list_assets, import_asset, delete_asset, get_asset_data_url,
             get_monitors, bring_all_to_screen, move_widget_to_monitor,
             get_offscreen_widgets, recover_widget, get_and_clear_startup_toast,
+            register_metric_interest, unregister_metric_interest,
+            set_battery_saver, set_battery_interval, get_performance_config,
             metrics::system_cpu,
             metrics::system_memory,
             metrics::system_disk,
@@ -1958,5 +2031,46 @@ mod tests {
         assert!(is_topleft_offscreen(3000, 100, &monitors));
         // Off bottom
         assert!(is_topleft_offscreen(100, 1500, &monitors));
+    }
+
+    fn make_test_state() -> AppState {
+        AppState {
+            sys: Mutex::new(System::new_all()),
+            nvml: None,
+            last_net_io: Mutex::new((0, 0, Instant::now())),
+            last_disk_io: Mutex::new((0, 0, Instant::now())),
+            active_modules: Mutex::new(HashMap::new()),
+            persistent: Mutex::new(PersistentState::default()),
+            data_dir: std::path::PathBuf::from("/tmp"),
+            desktop_wayland_windows: Mutex::new(HashSet::new()),
+            config: Mutex::new(EngineConfig::default()),
+            config_path: std::path::PathBuf::from("/tmp/flux_test_perf.toml"),
+            custom_broker: custom_data::CustomDataBroker::new(),
+            offscreen_widgets: Mutex::new(Vec::new()),
+            startup_toast: Mutex::new(None),
+            metric_subscriptions: Mutex::new(HashMap::new()),
+            hidden_widget_ticks: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[test]
+    fn unregister_all_clears_subscriptions_and_ticks() {
+        let state = make_test_state();
+        {
+            let mut subs = state.metric_subscriptions.lock().unwrap();
+            subs.entry("cpu".to_string()).or_default().insert("widget-1".to_string());
+            subs.entry("gpu".to_string()).or_default().insert("widget-1".to_string());
+            subs.entry("cpu".to_string()).or_default().insert("widget-2".to_string());
+        }
+        {
+            let mut ticks = state.hidden_widget_ticks.lock().unwrap();
+            ticks.insert("widget-1".to_string(), 3u32);
+        }
+        unregister_all_metric_interest(&state, "widget-1");
+        let subs = state.metric_subscriptions.lock().unwrap();
+        assert!(!subs["cpu"].contains("widget-1"), "widget-1 removed from cpu");
+        assert!(subs["cpu"].contains("widget-2"),  "widget-2 still in cpu");
+        assert!(!subs["gpu"].contains("widget-1"), "widget-1 removed from gpu");
+        assert!(!state.hidden_widget_ticks.lock().unwrap().contains_key("widget-1"), "tick counter removed");
     }
 }
