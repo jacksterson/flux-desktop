@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
+use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -86,6 +87,23 @@ pub fn check_alert_condition(
     fired
 }
 
+/// AppState wrapper for broadcaster use.
+pub fn evaluate_alerts(
+    state: &AppState,
+    metric: &str,
+    payload: &serde_json::Value,
+) -> Vec<(String, String, AlertDelivery, String, f64, f64)> {
+    let defs = state.alert_defs.lock().unwrap().clone();
+    let mut states = state.alert_states.lock().unwrap();
+    check_alert_condition(&defs, &mut states, metric, payload)
+}
+
+/// Remove all widget-registered alerts for a closing window.
+pub fn unregister_widget_alerts(state: &AppState, window_id: &str) {
+    let mut defs = state.alert_defs.lock().unwrap();
+    defs.retain(|d| !matches!(&d.source, AlertSource::Widget { window_id: wid } if wid == window_id));
+}
+
 /// Fire a single alert: OS notification and/or flux:alert event.
 pub fn deliver_alert(
     app: &AppHandle,
@@ -115,6 +133,74 @@ pub fn deliver_alert(
     if matches!(delivery, AlertDelivery::Callback | AlertDelivery::Both) {
         let _ = app.emit("flux:alert", &event_payload);
     }
+}
+
+// ── Tauri commands ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn register_alert(
+    state: State<'_, AppState>,
+    metric: String,
+    field: String,
+    op: AlertOp,
+    value: f64,
+    duration_secs: u64,
+    delivery: String,
+    label: String,
+    window_id: Option<String>,
+) -> Result<String, String> {
+    let delivery = match delivery.as_str() {
+        "callback"     => AlertDelivery::Callback,
+        "both"         => AlertDelivery::Both,
+        _              => AlertDelivery::Notification,
+    };
+    let source = match window_id {
+        Some(wid) => AlertSource::Widget { window_id: wid },
+        None      => AlertSource::User,
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let def = AlertDef { id: id.clone(), metric, field, op, value, duration_secs, delivery, label, source };
+    let is_user = matches!(def.source, AlertSource::User);
+
+    state.alert_defs.lock().unwrap().push(def);
+
+    if is_user {
+        let user_alerts: Vec<AlertDef> = state.alert_defs.lock().unwrap()
+            .iter()
+            .filter(|d| matches!(d.source, AlertSource::User))
+            .cloned()
+            .collect();
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.alerts = user_alerts;
+        crate::config::write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn unregister_alert(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let mut defs = state.alert_defs.lock().unwrap();
+    let prev_len = defs.len();
+    defs.retain(|d| d.id != id);
+    let removed_user = prev_len != defs.len();
+    drop(defs);
+
+    if removed_user {
+        let user_alerts: Vec<AlertDef> = state.alert_defs.lock().unwrap()
+            .iter()
+            .filter(|d| matches!(d.source, AlertSource::User))
+            .cloned()
+            .collect();
+        let mut cfg = state.config.lock().unwrap();
+        cfg.engine.alerts = user_alerts;
+        crate::config::write_config(&state.config_path, &cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_alerts(state: State<'_, AppState>) -> Vec<AlertDef> {
+    state.alert_defs.lock().unwrap().clone()
 }
 
 #[cfg(test)]

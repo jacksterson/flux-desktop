@@ -219,6 +219,13 @@ pub struct AppState {
     pub metric_subscriptions: Mutex<HashMap<String, HashSet<String>>>,
     /// Per-window tick counter for hidden-widget emission throttling.
     pub hidden_widget_ticks: Mutex<HashMap<String, u32>>,
+    /// Per-metric ring buffer. Fills on every broadcaster tick regardless of subscription state.
+    /// Keys: "cpu", "memory", "network", "gpu", "disk-io"
+    pub metric_history: Mutex<HashMap<String, std::collections::VecDeque<serde_json::Value>>>,
+    /// Active alert definitions (widget-registered + user-defined).
+    pub alert_defs: Mutex<Vec<alerts::AlertDef>>,
+    /// Tracks when each alert condition first became true. None = condition currently false.
+    pub alert_states: Mutex<HashMap<String, Option<std::time::Instant>>>,
 }
 
 // --- Commands ---
@@ -1514,6 +1521,7 @@ pub fn run() {
             let active_on_start: Vec<String> = engine_config.engine.active_modules.clone();
             let initial_autostart = engine_config.engine.start_on_login;
 
+            let initial_alerts = engine_config.engine.alerts.clone();
             app.manage(AppState {
                 sys: Mutex::new(System::new_all()),
                 nvml,
@@ -1530,6 +1538,9 @@ pub fn run() {
                 startup_toast: Mutex::new(None),
                 metric_subscriptions: Mutex::new(HashMap::new()),
                 hidden_widget_ticks: Mutex::new(HashMap::new()),
+                metric_history: Mutex::new(HashMap::new()),
+                alert_defs: Mutex::new(initial_alerts),
+                alert_states: Mutex::new(HashMap::new()),
             });
 
             // System tray
@@ -2053,6 +2064,9 @@ mod tests {
             startup_toast: Mutex::new(None),
             metric_subscriptions: Mutex::new(HashMap::new()),
             hidden_widget_ticks: Mutex::new(HashMap::new()),
+            metric_history: Mutex::new(HashMap::new()),
+            alert_defs: Mutex::new(Vec::new()),
+            alert_states: Mutex::new(HashMap::new()),
         }
     }
 
