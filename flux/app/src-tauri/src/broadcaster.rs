@@ -8,6 +8,9 @@ use crate::AppState;
 #[cfg(target_os = "linux")]
 use crate::metrics::read_disk_io_linux;
 
+/// Hidden widgets receive events every N ticks. At the default 2s interval, this gives ~10s updates.
+const HIDDEN_THROTTLE_TICKS: u32 = 5;
+
 /// Returns true if at least one window is subscribed to `category`.
 /// Acquires and immediately releases the lock.
 fn has_subscribers(
@@ -26,6 +29,45 @@ fn detect_on_battery(battery: Option<&crate::metrics::BatteryInfo>) -> bool {
     battery.map(|b| !b.charging).unwrap_or(false)
 }
 
+/// Resolve the tick sleep interval: uses `battery_interval_ms` when battery saver is
+/// active and the device is discharging; otherwise uses `broadcast_interval_ms`.
+fn compute_effective_ms(
+    battery_saver: bool,
+    on_battery: bool,
+    battery_interval_ms: u64,
+    broadcast_interval_ms: u64,
+) -> u64 {
+    if battery_saver && on_battery {
+        battery_interval_ms
+    } else {
+        broadcast_interval_ms
+    }
+}
+
+/// Emit `event` + `payload` to each active widget window, throttling hidden windows.
+/// Visible windows get every event and have their tick counter reset to 0.
+/// Hidden windows get an event only every HIDDEN_THROTTLE_TICKS ticks.
+fn emit_to_windows(app: &AppHandle, state: &AppState, event: &str, payload: &serde_json::Value) {
+    let window_ids: Vec<String> = state.active_modules.lock().unwrap().keys().cloned().collect();
+    for id in &window_ids {
+        if let Some(win) = app.get_webview_window(id) {
+            let visible = win.is_visible().unwrap_or(true);
+            if visible {
+                state.hidden_widget_ticks.lock().unwrap().insert(id.clone(), 0);
+                let _ = win.emit(event, payload);
+            } else {
+                let mut ticks = state.hidden_widget_ticks.lock().unwrap();
+                let count = ticks.entry(id.clone()).or_insert(0);
+                *count += 1;
+                if *count >= HIDDEN_THROTTLE_TICKS {
+                    *count = 0;
+                    let _ = win.emit(event, payload);
+                }
+            }
+        }
+    }
+}
+
 pub fn start(app: AppHandle, interval_ms: u64) {
     std::thread::spawn(move || {
         let fast_ms = interval_ms.max(100); // floor at 100ms to prevent spin loops
@@ -37,6 +79,8 @@ pub fn start(app: AppHandle, interval_ms: u64) {
         let mut slow_tick: u32 = 0;
         let mut networks = Networks::new_with_refreshed_list();
         let mut components = Components::new_with_refreshed_list();
+        let mut on_battery = false;     // updated each slow tick
+        let mut effective_ms = fast_ms; // updated each slow tick; starts at normal rate
 
         // Emit OS info once at startup
         let os_payload = serde_json::json!({
@@ -73,7 +117,7 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     "threads":   sys.cpus().len(),
                     "cpu_temp":  cpu_temp,
                 });
-                let _ = app.emit("system:cpu", &cpu_payload);
+                emit_to_windows(&app, &state, "system:cpu", &cpu_payload);
             }
 
             // --- Memory ---
@@ -86,7 +130,7 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     "swap_total": sys.total_swap(),
                     "swap_used":  sys.used_swap(),
                 });
-                let _ = app.emit("system:memory", &mem_payload);
+                emit_to_windows(&app, &state, "system:memory", &mem_payload);
             }
 
             // Always update prev_net for accurate deltas on next subscribe
@@ -108,13 +152,15 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                         "total_transmitted":  total_tx,
                     })
                 }).collect();
-                let _ = app.emit("system:network", &net_payload);
+                let net_val = serde_json::to_value(&net_payload).unwrap_or(serde_json::Value::Null);
+                emit_to_windows(&app, &state, "system:network", &net_val);
             }
 
             // --- GPU ---
             if has_subscribers(&state.metric_subscriptions, "gpu") {
                 let gpu = collect_gpu(&state.nvml, &mut components);
-                let _ = app.emit("system:gpu", &gpu);
+                let gpu_val = serde_json::to_value(&gpu).unwrap_or(serde_json::Value::Null);
+                emit_to_windows(&app, &state, "system:gpu", &gpu_val);
             }
 
             // Always read disk-io counters for accurate deltas
@@ -138,12 +184,14 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     } else {
                         DiskIoInfo { read: Some(0), write: Some(0) }
                     };
-                    let _ = app.emit("system:disk-io", &disk_io);
+                    let disk_io_val = serde_json::to_value(&disk_io).unwrap_or(serde_json::Value::Null);
+                    emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
                     let disk_io = DiskIoInfo { read: None, write: None };
-                    let _ = app.emit("system:disk-io", &disk_io);
+                    let disk_io_val = serde_json::to_value(&disk_io).unwrap_or(serde_json::Value::Null);
+                    emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
                 }
             }
 
@@ -154,6 +202,19 @@ pub fn start(app: AppHandle, interval_ms: u64) {
             slow_tick += 1;
             if slow_tick >= slow_ticks {
                 slow_tick = 0;
+
+                // Update battery state and recompute effective interval
+                let batt_info = read_battery();
+                on_battery = detect_on_battery(batt_info.as_ref());
+                {
+                    let cfg = state.config.lock().unwrap();
+                    effective_ms = compute_effective_ms(
+                        cfg.engine.battery_saver,
+                        on_battery,
+                        cfg.engine.battery_interval_ms,
+                        cfg.engine.broadcast_interval_ms,
+                    );
+                }
 
                 if has_subscribers(&state.metric_subscriptions, "disk") {
                     let disks = Disks::new_with_refreshed_list();
@@ -173,18 +234,21 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                             },
                         })
                     }).collect();
-                    let _ = app.emit("system:disk", &disk_payload);
+                    let disk_val = serde_json::to_value(&disk_payload).unwrap_or(serde_json::Value::Null);
+                    emit_to_windows(&app, &state, "system:disk", &disk_val);
                 }
 
+                // Reuse batt_info already read for on_battery detection
                 if has_subscribers(&state.metric_subscriptions, "battery") {
-                    let _ = app.emit("system:battery", &read_battery());
+                    let batt_val = serde_json::to_value(&batt_info).unwrap_or(serde_json::Value::Null);
+                    emit_to_windows(&app, &state, "system:battery", &batt_val);
                 }
             }
 
-            // Sleep for remainder of tick
+            // Sleep for remainder of tick — uses battery-aware effective interval
             let elapsed = tick_start.elapsed();
-            if elapsed < Duration::from_millis(fast_ms) {
-                std::thread::sleep(Duration::from_millis(fast_ms) - elapsed);
+            if elapsed < Duration::from_millis(effective_ms) {
+                std::thread::sleep(Duration::from_millis(effective_ms) - elapsed);
             }
         }
     });
@@ -312,5 +376,26 @@ mod tests {
     fn detect_on_battery_charging_returns_false() {
         let b = BatteryInfo { percentage: 80.0, charging: true, time_to_empty: None, time_to_full: None };
         assert!(!detect_on_battery(Some(&b)));
+    }
+
+    #[test]
+    fn hidden_throttle_ticks_constant_is_five() {
+        assert_eq!(HIDDEN_THROTTLE_TICKS, 5);
+    }
+
+    #[test]
+    fn compute_effective_ms_battery_saver_off() {
+        assert_eq!(compute_effective_ms(false, true,  5000, 2000), 2000);
+        assert_eq!(compute_effective_ms(false, false, 5000, 2000), 2000);
+    }
+
+    #[test]
+    fn compute_effective_ms_battery_saver_on_discharging() {
+        assert_eq!(compute_effective_ms(true, true, 5000, 2000), 5000);
+    }
+
+    #[test]
+    fn compute_effective_ms_battery_saver_on_charging() {
+        assert_eq!(compute_effective_ms(true, false, 5000, 2000), 2000);
     }
 }
