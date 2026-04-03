@@ -38,6 +38,9 @@
   // --- WidgetAPI.system ---
 
   const system = {
+    _counts: new Map(),   // category → active listener count
+    _windowId: windowLabel,
+
     /**
      * Pull (on-demand) system metrics. Each returns a Promise.
      */
@@ -60,8 +63,18 @@
      */
     subscribe(metric, callback) {
       const eventName = `system:${metric}`;
-      let unlistenFn = null;
 
+      // First listener for this category — register with Rust broadcaster
+      const count = this._counts.get(metric) || 0;
+      if (count === 0) {
+        invoke('register_metric_interest', {
+          windowId: this._windowId,
+          categories: [metric],
+        }).catch(() => {}); // fire-and-forget
+      }
+      this._counts.set(metric, count + 1);
+
+      let unlistenFn = null;
       const unlistenPromise = listen(eventName, (event) => {
         callback(event.payload);
       });
@@ -71,16 +84,24 @@
       unlistenPromise.then((fn) => {
         unlistenFn = fn;
         if (cancelled) {
-          // unlisten was called before listen resolved
           fn();
         }
       });
 
       return function unlisten() {
+        // Decrement listener count; unregister from broadcaster when last listener removed
+        const newCount = (system._counts.get(metric) || 1) - 1;
+        system._counts.set(metric, newCount);
+        if (newCount === 0) {
+          invoke('unregister_metric_interest', {
+            windowId: system._windowId,
+            categories: [metric],
+          }).catch(() => {}); // fire-and-forget
+        }
+
         if (unlistenFn) {
           unlistenFn();
         } else {
-          // Mark for cancellation once the promise resolves
           cancelled = true;
         }
       };
