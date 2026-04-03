@@ -97,9 +97,12 @@ pub fn start(app: AppHandle, interval_ms: u64) {
             // Acquire state once per tick
             let state = app.state::<AppState>();
 
-            // Refresh persistent state objects in-place
-            networks.refresh(false);
-            components.refresh(false);
+            // Refresh sysinfo objects only for subscribed categories
+            let need_network = has_subscribers(&state.metric_subscriptions, "network");
+            let need_components = has_subscribers(&state.metric_subscriptions, "cpu")
+                || has_subscribers(&state.metric_subscriptions, "gpu");
+            if need_network  { networks.refresh(false); }
+            if need_components { components.refresh(false); }
 
             // --- CPU ---
             if has_subscribers(&state.metric_subscriptions, "cpu") {

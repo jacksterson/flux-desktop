@@ -195,6 +195,8 @@ impl PersistentState {
 
 // --- Engine State ---
 // Lock order: active_modules → desktop_wayland_windows → persistent → config
+//             metric_subscriptions and hidden_widget_ticks are never held together
+//             with each other or with the above; acquire and drop individually.
 pub struct AppState {
     pub sys: Mutex<System>,
     pub nvml: Option<Nvml>,
@@ -1294,7 +1296,7 @@ fn set_battery_saver(state: State<'_, AppState>, enabled: bool) -> Result<(), St
 #[tauri::command]
 fn set_battery_interval(state: State<'_, AppState>, ms: u64) -> Result<(), String> {
     let mut cfg = state.config.lock().unwrap();
-    cfg.engine.battery_interval_ms = ms.max(100);
+    cfg.engine.battery_interval_ms = ms.max(500);
     write_config(&state.config_path, &cfg).map_err(|e| e.to_string())
 }
 
