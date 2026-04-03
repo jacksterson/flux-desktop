@@ -54,6 +54,15 @@
     os()      { return invoke('system_os'); },
 
     /**
+     * Pull the last N samples from the metric history ring buffer.
+     *
+     * @param {string} metric - One of: 'cpu', 'memory', 'network', 'gpu', 'disk-io'
+     * @param {number} n - Number of samples to return (capped at history_depth).
+     * @returns {Promise<Array>} Array of metric payloads, oldest first.
+     */
+    history(metric, n) { return invoke('get_metric_history', { metric, n }); },
+
+    /**
      * Subscribe to a pushed metric broadcast event.
      *
      * @param {string} metric - One of: 'cpu', 'memory', 'disk', 'network',
@@ -220,7 +229,73 @@
     },
   };
 
+  // --- WidgetAPI.alerts ---
+
+  const alerts = {
+    /**
+     * Register a threshold alert for this widget.
+     * The alert is automatically removed when this widget window closes.
+     *
+     * @param {Object} opts
+     * @param {string} opts.metric    - 'cpu', 'memory', 'network', 'gpu', 'disk-io'
+     * @param {string} opts.field     - Payload field to test, e.g. 'avg_usage'
+     * @param {string} opts.op        - 'gt', 'lt', 'gte', 'lte', 'eq'
+     * @param {number} opts.value     - Threshold value
+     * @param {number} opts.duration  - Seconds condition must hold before firing (default 10)
+     * @param {string} opts.delivery  - 'notification', 'callback', or 'both' (default 'notification')
+     * @param {string} opts.label     - Human-readable alert title
+     * @returns {Promise<string>} Resolves to the assigned alert id.
+     */
+    register({ metric, field, op, value, duration = 10, delivery = 'notification', label = '' }) {
+      return invoke('register_alert', {
+        metric,
+        field,
+        op,
+        value,
+        duration_secs: duration,
+        delivery,
+        label,
+        window_id: windowLabel,
+      });
+    },
+
+    /**
+     * Remove a previously registered alert by id.
+     * @param {string} id - Alert id returned by register().
+     * @returns {Promise<void>}
+     */
+    unregister(id) {
+      return invoke('unregister_alert', { id });
+    },
+
+    /**
+     * Listen for alert callback events.
+     * Fires when an alert with delivery 'callback' or 'both' is triggered.
+     *
+     * @param {function} callback - Called with { id, label, metric, field, value, actual }
+     * @returns {function} unlisten - Call to stop listening.
+     */
+    onAlert(callback) {
+      let unlistenFn = null;
+      let cancelled = false;
+      const unlistenPromise = listen('flux:alert', (event) => {
+        callback(event.payload);
+      });
+      unlistenPromise.then((fn) => {
+        unlistenFn = fn;
+        if (cancelled) fn();
+      });
+      return function unlisten() {
+        if (unlistenFn) {
+          unlistenFn();
+        } else {
+          cancelled = true;
+        }
+      };
+    },
+  };
+
   // --- Expose ---
 
-  window.WidgetAPI = { system, widget };
+  window.WidgetAPI = { system, widget, alerts };
 })();
