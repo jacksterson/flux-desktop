@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
+use crate::alerts::AlertDef;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EngineConfig {
@@ -20,11 +21,16 @@ pub struct EngineSection {
     pub battery_saver: bool,
     #[serde(default = "default_battery_interval")]
     pub battery_interval_ms: u64,
+    #[serde(default = "default_history_depth")]
+    pub history_depth: usize,
+    #[serde(default)]
+    pub alerts: Vec<AlertDef>,
 }
 
 fn default_interval() -> u64 { 2000 }
 fn default_true() -> bool { true }
 fn default_battery_interval() -> u64 { 5000 }
+fn default_history_depth() -> usize { 60 }
 
 impl Default for EngineSection {
     fn default() -> Self {
@@ -34,6 +40,8 @@ impl Default for EngineSection {
             start_on_login: false,
             battery_saver: true,
             battery_interval_ms: default_battery_interval(),
+            history_depth: default_history_depth(),
+            alerts: Vec::new(),
         }
     }
 }
@@ -142,6 +150,39 @@ mod tests {
         let loaded = read_config(&tmp);
         assert!(loaded.engine.battery_saver);
         assert_eq!(loaded.engine.battery_interval_ms, 5000);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn history_depth_defaults_to_60() {
+        let c = EngineConfig::default();
+        assert_eq!(c.engine.history_depth, 60);
+    }
+
+    #[test]
+    fn history_depth_roundtrip() {
+        let mut c = EngineConfig::default();
+        c.engine.history_depth = 120;
+        let tmp = temp_dir().join(format!("flux_config_test_hist_{}.toml", std::process::id()));
+        write_config(&tmp, &c).expect("write failed");
+        let loaded = read_config(&tmp);
+        assert_eq!(loaded.engine.history_depth, 120);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn alerts_default_empty() {
+        let c = EngineConfig::default();
+        assert!(c.engine.alerts.is_empty());
+    }
+
+    #[test]
+    fn old_config_without_history_uses_default() {
+        let tmp = temp_dir().join(format!("flux_config_test_oldhist_{}.toml", std::process::id()));
+        std::fs::write(&tmp, "[engine]\nbroadcast_interval_ms = 2000\n").unwrap();
+        let loaded = read_config(&tmp);
+        assert_eq!(loaded.engine.history_depth, 60);
+        assert!(loaded.engine.alerts.is_empty());
         let _ = std::fs::remove_file(&tmp);
     }
 }
