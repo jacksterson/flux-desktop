@@ -135,6 +135,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 emit_to_windows(&app, &state, "system:cpu", &cpu_payload);
                 let depth = state.config.lock().unwrap().engine.history_depth;
                 push_to_history(&mut state.metric_history.lock().unwrap(), "cpu", cpu_payload.clone(), depth);
+                let cpu_fired = crate::alerts::evaluate_alerts(&state, "cpu", &cpu_payload);
+                for (id, label, delivery, field, threshold, actual) in cpu_fired {
+                    crate::alerts::deliver_alert(&app, &id, &label, &delivery, "cpu", &field, threshold, actual);
+                }
             }
 
             // --- Memory ---
@@ -150,6 +154,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 emit_to_windows(&app, &state, "system:memory", &mem_payload);
                 let depth = state.config.lock().unwrap().engine.history_depth;
                 push_to_history(&mut state.metric_history.lock().unwrap(), "memory", mem_payload.clone(), depth);
+                let mem_fired = crate::alerts::evaluate_alerts(&state, "memory", &mem_payload);
+                for (id, label, delivery, field, threshold, actual) in mem_fired {
+                    crate::alerts::deliver_alert(&app, &id, &label, &delivery, "memory", &field, threshold, actual);
+                }
             }
 
             // Always update prev_net for accurate deltas on next subscribe
@@ -175,6 +183,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 emit_to_windows(&app, &state, "system:network", &net_val);
                 let depth = state.config.lock().unwrap().engine.history_depth;
                 push_to_history(&mut state.metric_history.lock().unwrap(), "network", net_val.clone(), depth);
+                let net_fired = crate::alerts::evaluate_alerts(&state, "network", &net_val);
+                for (id, label, delivery, field, threshold, actual) in net_fired {
+                    crate::alerts::deliver_alert(&app, &id, &label, &delivery, "network", &field, threshold, actual);
+                }
             }
 
             // --- GPU ---
@@ -185,6 +197,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 let gpu_for_hist = gpu_val.clone();
                 let depth = state.config.lock().unwrap().engine.history_depth;
                 push_to_history(&mut state.metric_history.lock().unwrap(), "gpu", gpu_for_hist, depth);
+                let gpu_fired = crate::alerts::evaluate_alerts(&state, "gpu", &gpu_val);
+                for (id, label, delivery, field, threshold, actual) in gpu_fired {
+                    crate::alerts::deliver_alert(&app, &id, &label, &delivery, "gpu", &field, threshold, actual);
+                }
             }
 
             // Always read disk-io counters for accurate deltas
@@ -212,6 +228,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
                     let depth = state.config.lock().unwrap().engine.history_depth;
                     push_to_history(&mut state.metric_history.lock().unwrap(), "disk-io", disk_io_val.clone(), depth);
+                    let dio_fired = crate::alerts::evaluate_alerts(&state, "disk-io", &disk_io_val);
+                    for (id, label, delivery, field, threshold, actual) in dio_fired {
+                        crate::alerts::deliver_alert(&app, &id, &label, &delivery, "disk-io", &field, threshold, actual);
+                    }
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
@@ -220,6 +240,10 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
                     let depth = state.config.lock().unwrap().engine.history_depth;
                     push_to_history(&mut state.metric_history.lock().unwrap(), "disk-io", disk_io_val.clone(), depth);
+                    let dio_fired = crate::alerts::evaluate_alerts(&state, "disk-io", &disk_io_val);
+                    for (id, label, delivery, field, threshold, actual) in dio_fired {
+                        crate::alerts::deliver_alert(&app, &id, &label, &delivery, "disk-io", &field, threshold, actual);
+                    }
                 }
             }
 
