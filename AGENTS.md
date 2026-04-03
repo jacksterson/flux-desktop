@@ -12,11 +12,32 @@
 - Context sync: always check AGENTS.md before starting any new task
 - jCodemunch MCP is active — use symbol-level retrieval, not full file scans
 - Obsidian vault is the persistent memory layer for all projects:
+    VAULT_PATH = /home/jack/obsidian-vault
     - Stores kickoff docs, release plans, design decisions, and session notes
     - Works IN CONJUNCTION with jCodemunch: jCodemunch indexes code structure,
       Obsidian indexes human-readable context (why decisions were made, not just what)
-    - Before starting any task, check BOTH jCodemunch (for code state) AND
-      Obsidian vault (for project intent, history, and notes)
-    - After completing any significant task, write a summary note to the Obsidian vault
     - Memory retrieval order: Obsidian (intent/context) → jCodemunch (code/symbols) → files
-- Reference docs/obsidian-sync.md for vault path and MCP setup
+
+  READ RULE: Before starting any task:
+    1. Read VAULT_PATH/Projects/kickoff-<project>.md for project intent
+    2. Grep VAULT_PATH/Projects/ for recent session notes on the current topic
+    3. Query jCodemunch for current code state
+    Only read raw files if both sources are insufficient.
+
+  WRITE-BACK RULE: After any session with a commit or finalized design:
+    Write VAULT_PATH/Projects/session-YYYY-MM-DD-<topic>.md with:
+      ---
+      tags: [<project>, session]
+      date: YYYY-MM-DD
+      phase: <current phase>
+      ---
+      ## What was built
+      ## Key decisions
+      ## What changed from the plan
+      ## Next
+    Use obsidian-cli skill if Obsidian is open; Write tool otherwise.
+    Skip write-back if the session produced no commits and no finalized design decisions.
+
+  Kickoff docs:    VAULT_PATH/Projects/kickoff-<project>.md
+  Release plans:   VAULT_PATH/Projects/release-<project>.md
+  Session notes:   VAULT_PATH/Projects/session-YYYY-MM-DD-<topic>.md
