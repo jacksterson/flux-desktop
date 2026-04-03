@@ -18,7 +18,7 @@
       Obsidian indexes human-readable context (why decisions were made, not just what)
     - Memory retrieval order: Obsidian (intent/context) → jCodemunch (code/symbols) → files
 
-  READ RULE: Before starting any task:
+  READ RULE: Before any architectural suggestion, multi-step plan, new phase work, or non-trivial code change:
     1. Read VAULT_PATH/Projects/kickoff-<project>.md for project intent
     2. Grep VAULT_PATH/Projects/ for recent session notes on the current topic
     3. Query jCodemunch for current code state
@@ -35,9 +35,6 @@
       ## Key decisions
       ## What changed from the plan
       ## Next
-    Use obsidian-cli skill if Obsidian is open; Write tool otherwise.
+    - If Obsidian is running: use obsidian-cli skill (obsidian create or obsidian append)
+    - If Obsidian is not running: use Write tool directly to VAULT_PATH/Projects/
     Skip write-back if the session produced no commits and no finalized design decisions.
-
-  Kickoff docs:    VAULT_PATH/Projects/kickoff-<project>.md
-  Release plans:   VAULT_PATH/Projects/release-<project>.md
-  Session notes:   VAULT_PATH/Projects/session-YYYY-MM-DD-<topic>.md
