@@ -68,6 +68,18 @@ fn emit_to_windows(app: &AppHandle, state: &AppState, event: &str, payload: &ser
     }
 }
 
+/// Push a metric payload into the ring buffer. Drops oldest entry when depth is exceeded.
+fn push_to_history(
+    history: &mut HashMap<String, std::collections::VecDeque<serde_json::Value>>,
+    metric: &str,
+    payload: serde_json::Value,
+    depth: usize,
+) {
+    let deque = history.entry(metric.to_string()).or_insert_with(std::collections::VecDeque::new);
+    deque.push_back(payload);
+    while deque.len() > depth { deque.pop_front(); }
+}
+
 pub fn start(app: AppHandle, interval_ms: u64) {
     std::thread::spawn(move || {
         let fast_ms = interval_ms.max(100); // floor at 100ms to prevent spin loops
@@ -121,6 +133,8 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     "cpu_temp":  cpu_temp,
                 });
                 emit_to_windows(&app, &state, "system:cpu", &cpu_payload);
+                let depth = state.config.lock().unwrap().engine.history_depth;
+                push_to_history(&mut state.metric_history.lock().unwrap(), "cpu", cpu_payload.clone(), depth);
             }
 
             // --- Memory ---
@@ -134,6 +148,8 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     "swap_used":  sys.used_swap(),
                 });
                 emit_to_windows(&app, &state, "system:memory", &mem_payload);
+                let depth = state.config.lock().unwrap().engine.history_depth;
+                push_to_history(&mut state.metric_history.lock().unwrap(), "memory", mem_payload.clone(), depth);
             }
 
             // Always update prev_net for accurate deltas on next subscribe
@@ -157,6 +173,8 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 }).collect();
                 let net_val = serde_json::to_value(&net_payload).unwrap_or(serde_json::Value::Null);
                 emit_to_windows(&app, &state, "system:network", &net_val);
+                let depth = state.config.lock().unwrap().engine.history_depth;
+                push_to_history(&mut state.metric_history.lock().unwrap(), "network", net_val.clone(), depth);
             }
 
             // --- GPU ---
@@ -164,6 +182,9 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                 let gpu = collect_gpu(&state.nvml, &mut components);
                 let gpu_val = serde_json::to_value(&gpu).unwrap_or(serde_json::Value::Null);
                 emit_to_windows(&app, &state, "system:gpu", &gpu_val);
+                let gpu_for_hist = gpu_val.clone();
+                let depth = state.config.lock().unwrap().engine.history_depth;
+                push_to_history(&mut state.metric_history.lock().unwrap(), "gpu", gpu_for_hist, depth);
             }
 
             // Always read disk-io counters for accurate deltas
@@ -189,12 +210,16 @@ pub fn start(app: AppHandle, interval_ms: u64) {
                     };
                     let disk_io_val = serde_json::to_value(&disk_io).unwrap_or(serde_json::Value::Null);
                     emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
+                    let depth = state.config.lock().unwrap().engine.history_depth;
+                    push_to_history(&mut state.metric_history.lock().unwrap(), "disk-io", disk_io_val.clone(), depth);
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
                     let disk_io = DiskIoInfo { read: None, write: None };
                     let disk_io_val = serde_json::to_value(&disk_io).unwrap_or(serde_json::Value::Null);
                     emit_to_windows(&app, &state, "system:disk-io", &disk_io_val);
+                    let depth = state.config.lock().unwrap().engine.history_depth;
+                    push_to_history(&mut state.metric_history.lock().unwrap(), "disk-io", disk_io_val.clone(), depth);
                 }
             }
 
@@ -400,5 +425,26 @@ mod tests {
     #[test]
     fn compute_effective_ms_battery_saver_on_charging() {
         assert_eq!(compute_effective_ms(true, false, 5000, 2000), 2000);
+    }
+
+    #[test]
+    fn push_to_history_respects_depth_limit() {
+        let mut history: HashMap<String, std::collections::VecDeque<serde_json::Value>> = HashMap::new();
+        for i in 0..10u32 {
+            push_to_history(&mut history, "cpu", serde_json::json!({ "avg_usage": i }), 5);
+        }
+        let deque = &history["cpu"];
+        assert_eq!(deque.len(), 5);
+        // Should contain the last 5 values: 5, 6, 7, 8, 9
+        assert_eq!(deque.back().unwrap()["avg_usage"], 9);
+        assert_eq!(deque.front().unwrap()["avg_usage"], 5);
+    }
+
+    #[test]
+    fn push_to_history_fills_below_depth() {
+        let mut history: HashMap<String, std::collections::VecDeque<serde_json::Value>> = HashMap::new();
+        push_to_history(&mut history, "memory", serde_json::json!({ "used": 1000 }), 60);
+        push_to_history(&mut history, "memory", serde_json::json!({ "used": 2000 }), 60);
+        assert_eq!(history["memory"].len(), 2);
     }
 }
