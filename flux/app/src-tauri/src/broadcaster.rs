@@ -8,6 +8,24 @@ use crate::AppState;
 #[cfg(target_os = "linux")]
 use crate::metrics::read_disk_io_linux;
 
+/// Returns true if at least one window is subscribed to `category`.
+/// Acquires and immediately releases the lock.
+fn has_subscribers(
+    subs: &std::sync::Mutex<HashMap<String, std::collections::HashSet<String>>>,
+    category: &str,
+) -> bool {
+    subs.lock()
+        .unwrap()
+        .get(category)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+}
+
+/// Returns true when the device has a battery and it is not charging.
+fn detect_on_battery(battery: Option<&crate::metrics::BatteryInfo>) -> bool {
+    battery.map(|b| !b.charging).unwrap_or(false)
+}
+
 pub fn start(app: AppHandle, interval_ms: u64) {
     std::thread::spawn(move || {
         let fast_ms = interval_ms.max(100); // floor at 100ms to prevent spin loops
@@ -32,116 +50,138 @@ pub fn start(app: AppHandle, interval_ms: u64) {
         loop {
             let tick_start = Instant::now();
 
+            // Acquire state once per tick
+            let state = app.state::<AppState>();
+
             // Refresh persistent state objects in-place
             networks.refresh(false);
             components.refresh(false);
 
             // --- CPU ---
-            sys.refresh_specifics(
-                RefreshKind::nothing()
-                    .with_cpu(CpuRefreshKind::nothing().with_cpu_usage()),
-            );
-            let cpu_temp = read_cpu_temp(&components);
-            let cpu_payload = serde_json::json!({
-                "usage":     sys.cpus().iter().map(|c| c.cpu_usage()).collect::<Vec<_>>(),
-                "avg_usage": sys.global_cpu_usage(),
-                "frequency": sys.cpus().first().map(|c| c.frequency()).unwrap_or(0),
-                "name":      sys.cpus().first().map(|c| c.brand()).unwrap_or(""),
-                "cores":     System::physical_core_count().unwrap_or(0),
-                "threads":   sys.cpus().len(),
-                "cpu_temp":  cpu_temp,
-            });
-            let _ = app.emit("system:cpu", &cpu_payload);
+            if has_subscribers(&state.metric_subscriptions, "cpu") {
+                sys.refresh_specifics(
+                    RefreshKind::nothing()
+                        .with_cpu(CpuRefreshKind::nothing().with_cpu_usage()),
+                );
+                let cpu_temp = read_cpu_temp(&components);
+                let cpu_payload = serde_json::json!({
+                    "usage":     sys.cpus().iter().map(|c| c.cpu_usage()).collect::<Vec<_>>(),
+                    "avg_usage": sys.global_cpu_usage(),
+                    "frequency": sys.cpus().first().map(|c| c.frequency()).unwrap_or(0),
+                    "name":      sys.cpus().first().map(|c| c.brand()).unwrap_or(""),
+                    "cores":     System::physical_core_count().unwrap_or(0),
+                    "threads":   sys.cpus().len(),
+                    "cpu_temp":  cpu_temp,
+                });
+                let _ = app.emit("system:cpu", &cpu_payload);
+            }
 
             // --- Memory ---
-            sys.refresh_memory();
-            let mem_payload = serde_json::json!({
-                "total":      sys.total_memory(),
-                "used":       sys.used_memory(),
-                "available":  sys.available_memory(),
-                "swap_total": sys.total_swap(),
-                "swap_used":  sys.used_swap(),
-            });
-            let _ = app.emit("system:memory", &mem_payload);
+            if has_subscribers(&state.metric_subscriptions, "memory") {
+                sys.refresh_memory();
+                let mem_payload = serde_json::json!({
+                    "total":      sys.total_memory(),
+                    "used":       sys.used_memory(),
+                    "available":  sys.available_memory(),
+                    "swap_total": sys.total_swap(),
+                    "swap_used":  sys.used_swap(),
+                });
+                let _ = app.emit("system:memory", &mem_payload);
+            }
 
-            // --- Network ---
-            let net_payload: Vec<serde_json::Value> = networks.iter().map(|(name, data)| {
-                let total_rx = data.total_received();
-                let total_tx = data.total_transmitted();
-                let (prev_rx, prev_tx) = prev_net.get(name.as_str()).copied().unwrap_or((total_rx, total_tx));
-                let rx_delta = total_rx.saturating_sub(prev_rx);
-                let tx_delta = total_tx.saturating_sub(prev_tx);
-                serde_json::json!({
-                    "name":               name,
-                    "received":           rx_delta,
-                    "transmitted":        tx_delta,
-                    "total_received":     total_rx,
-                    "total_transmitted":  total_tx,
-                })
-            }).collect();
+            // Always update prev_net for accurate deltas on next subscribe
             for (name, data) in networks.iter() {
                 prev_net.insert(name.to_string(), (data.total_received(), data.total_transmitted()));
             }
-            let _ = app.emit("system:network", &net_payload);
+
+            // --- Network ---
+            if has_subscribers(&state.metric_subscriptions, "network") {
+                let net_payload: Vec<serde_json::Value> = networks.iter().map(|(name, data)| {
+                    let total_rx = data.total_received();
+                    let total_tx = data.total_transmitted();
+                    let (prev_rx, prev_tx) = prev_net.get(name.as_str()).copied().unwrap_or((total_rx, total_tx));
+                    serde_json::json!({
+                        "name":               name,
+                        "received":           total_rx.saturating_sub(prev_rx),
+                        "transmitted":        total_tx.saturating_sub(prev_tx),
+                        "total_received":     total_rx,
+                        "total_transmitted":  total_tx,
+                    })
+                }).collect();
+                let _ = app.emit("system:network", &net_payload);
+            }
 
             // --- GPU ---
-            let state = app.state::<AppState>();
-            let gpu = collect_gpu(&state.nvml, &mut components);
-            let _ = app.emit("system:gpu", &gpu);
+            if has_subscribers(&state.metric_subscriptions, "gpu") {
+                let gpu = collect_gpu(&state.nvml, &mut components);
+                let _ = app.emit("system:gpu", &gpu);
+            }
 
-            // --- Disk I/O (Linux only) ---
+            // Always read disk-io counters for accurate deltas
             #[cfg(target_os = "linux")]
-            {
+            let (td_r_cur, td_w_cur, now_disk) = {
                 let (td_r, td_w) = read_disk_io_linux();
                 let now = Instant::now();
-                let el = now.duration_since(prev_disk.2).as_secs_f32();
-                let disk_io = if el > 0.0 {
-                    DiskIoInfo {
-                        read:  Some((td_r.saturating_sub(prev_disk.0) as f32 / el) as u64),
-                        write: Some((td_w.saturating_sub(prev_disk.1) as f32 / el) as u64),
-                    }
-                } else {
-                    DiskIoInfo { read: Some(0), write: Some(0) }
-                };
-                prev_disk = (td_r, td_w, now);
-                let _ = app.emit("system:disk-io", &disk_io);
+                (td_r, td_w, now)
+            };
+
+            // --- Disk I/O ---
+            if has_subscribers(&state.metric_subscriptions, "disk-io") {
+                #[cfg(target_os = "linux")]
+                {
+                    let el = now_disk.duration_since(prev_disk.2).as_secs_f32();
+                    let disk_io = if el > 0.0 {
+                        DiskIoInfo {
+                            read:  Some((td_r_cur.saturating_sub(prev_disk.0) as f32 / el) as u64),
+                            write: Some((td_w_cur.saturating_sub(prev_disk.1) as f32 / el) as u64),
+                        }
+                    } else {
+                        DiskIoInfo { read: Some(0), write: Some(0) }
+                    };
+                    let _ = app.emit("system:disk-io", &disk_io);
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let disk_io = DiskIoInfo { read: None, write: None };
+                    let _ = app.emit("system:disk-io", &disk_io);
+                }
             }
-            #[cfg(not(target_os = "linux"))]
-            {
-                let disk_io = DiskIoInfo { read: None, write: None };
-                let _ = app.emit("system:disk-io", &disk_io);
-            }
+
+            #[cfg(target_os = "linux")]
+            { prev_disk = (td_r_cur, td_w_cur, now_disk); }
 
             // --- Slow metrics (every 30 s) ---
             slow_tick += 1;
             if slow_tick >= slow_ticks {
                 slow_tick = 0;
 
-                // Disk capacity
-                let disks = Disks::new_with_refreshed_list();
-                let disk_payload: Vec<serde_json::Value> = disks.iter().map(|d| {
-                    let avail = d.available_space();
-                    let total = d.total_space();
-                    serde_json::json!({
-                        "name":        d.name().to_string_lossy(),
-                        "mount_point": d.mount_point().to_string_lossy(),
-                        "total":       total,
-                        "used":        total.saturating_sub(avail),
-                        "available":   avail,
-                        "kind": match d.kind() {
-                            sysinfo::DiskKind::SSD => "SSD",
-                            sysinfo::DiskKind::HDD => "HDD",
-                            _ => "Unknown",
-                        },
-                    })
-                }).collect();
-                let _ = app.emit("system:disk", &disk_payload);
+                if has_subscribers(&state.metric_subscriptions, "disk") {
+                    let disks = Disks::new_with_refreshed_list();
+                    let disk_payload: Vec<serde_json::Value> = disks.iter().map(|d| {
+                        let avail = d.available_space();
+                        let total = d.total_space();
+                        serde_json::json!({
+                            "name":        d.name().to_string_lossy(),
+                            "mount_point": d.mount_point().to_string_lossy(),
+                            "total":       total,
+                            "used":        total.saturating_sub(avail),
+                            "available":   avail,
+                            "kind": match d.kind() {
+                                sysinfo::DiskKind::SSD => "SSD",
+                                sysinfo::DiskKind::HDD => "HDD",
+                                _ => "Unknown",
+                            },
+                        })
+                    }).collect();
+                    let _ = app.emit("system:disk", &disk_payload);
+                }
 
-                // Battery
-                let _ = app.emit("system:battery", &read_battery());
+                if has_subscribers(&state.metric_subscriptions, "battery") {
+                    let _ = app.emit("system:battery", &read_battery());
+                }
             }
 
-            // Sleep for remainder of 2 s tick
+            // Sleep for remainder of tick
             let elapsed = tick_start.elapsed();
             if elapsed < Duration::from_millis(fast_ms) {
                 std::thread::sleep(Duration::from_millis(fast_ms) - elapsed);
@@ -214,4 +254,63 @@ fn collect_gpu(nvml: &Option<Nvml>, components: &mut Components) -> Option<serde
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Mutex;
+    use crate::metrics::BatteryInfo;
+
+    #[test]
+    fn has_subscribers_empty_map_returns_false() {
+        let subs: Mutex<HashMap<String, HashSet<String>>> = Mutex::new(HashMap::new());
+        assert!(!has_subscribers(&subs, "cpu"));
+    }
+
+    #[test]
+    fn has_subscribers_with_one_subscriber_returns_true() {
+        let mut map = HashMap::new();
+        let mut set = HashSet::new();
+        set.insert("widget-1".to_string());
+        map.insert("cpu".to_string(), set);
+        let subs = Mutex::new(map);
+        assert!(has_subscribers(&subs, "cpu"));
+    }
+
+    #[test]
+    fn has_subscribers_empty_set_returns_false() {
+        let mut map = HashMap::new();
+        map.insert("cpu".to_string(), HashSet::<String>::new());
+        let subs = Mutex::new(map);
+        assert!(!has_subscribers(&subs, "cpu"));
+    }
+
+    #[test]
+    fn has_subscribers_wrong_category_returns_false() {
+        let mut map = HashMap::new();
+        let mut set = HashSet::new();
+        set.insert("widget-1".to_string());
+        map.insert("cpu".to_string(), set);
+        let subs = Mutex::new(map);
+        assert!(!has_subscribers(&subs, "gpu"));
+    }
+
+    #[test]
+    fn detect_on_battery_no_battery_returns_false() {
+        assert!(!detect_on_battery(None));
+    }
+
+    #[test]
+    fn detect_on_battery_discharging_returns_true() {
+        let b = BatteryInfo { percentage: 80.0, charging: false, time_to_empty: None, time_to_full: None };
+        assert!(detect_on_battery(Some(&b)));
+    }
+
+    #[test]
+    fn detect_on_battery_charging_returns_false() {
+        let b = BatteryInfo { percentage: 80.0, charging: true, time_to_empty: None, time_to_full: None };
+        assert!(!detect_on_battery(Some(&b)));
+    }
 }
