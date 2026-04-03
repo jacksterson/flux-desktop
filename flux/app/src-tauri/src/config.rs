@@ -16,13 +16,25 @@ pub struct EngineSection {
     pub active_modules: Vec<String>,
     #[serde(default)]
     pub start_on_login: bool,
+    #[serde(default = "default_true")]
+    pub battery_saver: bool,
+    #[serde(default = "default_battery_interval")]
+    pub battery_interval_ms: u64,
 }
 
 fn default_interval() -> u64 { 2000 }
+fn default_true() -> bool { true }
+fn default_battery_interval() -> u64 { 5000 }
 
 impl Default for EngineSection {
     fn default() -> Self {
-        Self { broadcast_interval_ms: default_interval(), active_modules: Vec::new(), start_on_login: false }
+        Self {
+            broadcast_interval_ms: default_interval(),
+            active_modules: Vec::new(),
+            start_on_login: false,
+            battery_saver: true,
+            battery_interval_ms: default_battery_interval(),
+        }
     }
 }
 
@@ -100,6 +112,36 @@ mod tests {
         assert!(!config_exists(&tmp));
         write_config(&tmp, &EngineConfig::default()).unwrap();
         assert!(config_exists(&tmp));
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn battery_saver_defaults_to_true() {
+        let c = EngineConfig::default();
+        assert!(c.engine.battery_saver);
+        assert_eq!(c.engine.battery_interval_ms, 5000);
+    }
+
+    #[test]
+    fn battery_saver_roundtrip() {
+        let mut c = EngineConfig::default();
+        c.engine.battery_saver = false;
+        c.engine.battery_interval_ms = 3000;
+        let tmp = temp_dir().join(format!("flux_config_test_battery_{}.toml", std::process::id()));
+        write_config(&tmp, &c).expect("write failed");
+        let loaded = read_config(&tmp);
+        assert!(!loaded.engine.battery_saver);
+        assert_eq!(loaded.engine.battery_interval_ms, 3000);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn old_config_without_battery_fields_uses_defaults() {
+        let tmp = temp_dir().join(format!("flux_config_test_old_{}.toml", std::process::id()));
+        std::fs::write(&tmp, "[engine]\nbroadcast_interval_ms = 2000\n").unwrap();
+        let loaded = read_config(&tmp);
+        assert!(loaded.engine.battery_saver);
+        assert_eq!(loaded.engine.battery_interval_ms, 5000);
         let _ = std::fs::remove_file(&tmp);
     }
 }
