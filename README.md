@@ -23,7 +23,7 @@ No proprietary scripting language. No Windows-only dependencies. Just web code.
 
 | Feature | Status |
 |---|---|
-| Windows / macOS / Linux support | Done |
+| Windows / macOS / Linux support | Linux Done, MacOS Next |
 | System tray + background daemon | Done |
 | Click-through desktop webview windows | Done |
 | Live system metrics (CPU, RAM, GPU, network, disk) | Done |
