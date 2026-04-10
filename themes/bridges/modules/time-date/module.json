@@ -1,0 +1,16 @@
+{
+  "id": "time-date",
+  "name": "Koji Pro // Chronos",
+  "version": "2.0.0",
+  "author": "Bridges",
+  "window": {
+    "width": 350,
+    "height": 220,
+    "transparent": true,
+    "decorations": false,
+    "windowLevel": "desktop",
+    "resizable": true
+  },
+  "permissions": ["window:drag"],
+  "entry": "index.html"
+}
