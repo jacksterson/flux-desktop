@@ -50,4 +50,3 @@
 - [x] Touch targets for resizers >= 10pt (expanded hitbox).
 
 ---
-*Created by Gemini CLI via UI/UX Pro Max Skill.*

@@ -1,0 +1,17 @@
+{
+  "id": "ai-usage",
+  "name": "Koji Pro // AI.OPS",
+  "version": "1.0.0",
+  "author": "Bridges",
+  "window": {
+    "width": 400,
+    "height": 500,
+    "transparent": true,
+    "decorations": false,
+    "windowLevel": "desktop",
+    "resizable": true
+  },
+  "permissions": ["window:drag"],
+  "entry": "index.html",
+  "settings": "settings.html"
+}

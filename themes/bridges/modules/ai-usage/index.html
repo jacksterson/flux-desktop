@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KOJI PRO // AI.OPS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared-hud.css">
+  <style>
+    .widget-container { position: relative; width: 100%; height: 100%; padding: 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; touch-action: none; font-family: var(--font-main); color: var(--color-hud-neutral); overflow: hidden; }
+    .background-layers { position: absolute; inset: -40px; -webkit-mask-image: radial-gradient(ellipse closest-side at center, black 20%, transparent 90%); mask-image: radial-gradient(ellipse closest-side at center, black 20%, transparent 90%); pointer-events: none; z-index: 0; }
+    .widget-background { position: absolute; inset: 0; background: radial-gradient(ellipse closest-side at center, rgba(10,15,26,0.55) 20%, transparent 90%); backdrop-filter: blur(25px); }
+    .scanlines { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.08) 50%); background-size: 100% 4px; pointer-events: none; z-index: 1; }
+    .resizer { position: absolute; bottom: 0; right: 0; width: 16px; height: 16px; cursor: se-resize; z-index: 50; }
+    .content { position: relative; z-index: 10; display: flex; flex-direction: column; gap: 0.6rem; height: 100%; }
+
+    header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid var(--color-border-default); padding-bottom: 0.4rem; flex-shrink: 0; }
+    header h1 { font-family: var(--font-header); font-size: 0.8rem; letter-spacing: 2px; color: var(--color-hud-neutral); opacity: 0.8; text-transform: uppercase; cursor: pointer; }
+    header h1:hover { opacity: 1; text-shadow: 0 0 10px var(--color-hud-primary); }
+    .settings-btn { font-size: 0.8rem; cursor: pointer; color: var(--color-hud-primary-soft); opacity: 0.6; background: none; border: none; padding: 0; }
+    .settings-btn:hover { opacity: 1; }
+
+    .service { flex-shrink: 0; padding: 0.5rem 0; }
+    .service + .service { border-top: 1px solid rgba(0,191,255,0.12); }
+    .service-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem; }
+    .service-name { font-family: var(--font-header); font-size: 0.75rem; letter-spacing: 2px; color: var(--color-hud-neutral); text-transform: uppercase; }
+    .tier-badge { font-family: var(--font-tech); font-size: 0.6rem; padding: 0.1rem 0.35rem; border: 1px solid; border-radius: 2px; text-transform: uppercase; letter-spacing: 1px; }
+    .tier-badge.free { color: var(--color-hud-caution); border-color: var(--color-hud-caution); }
+    .tier-badge.pro { color: var(--color-hud-primary); border-color: var(--color-hud-primary); }
+    .tier-badge.api { color: var(--color-hud-safe); border-color: var(--color-hud-safe); }
+
+    .usage-bar-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+    .usage-bar-key { font-family: var(--font-tech); font-size: 0.58rem; color: var(--color-hud-primary-soft); opacity: 0.6; width: 2.2rem; flex-shrink: 0; text-transform: uppercase; }
+    .bar-track { flex: 1; height: 5px; background: rgba(0,191,255,0.08); border-radius: 2px; overflow: hidden; }
+    .bar-fill { height: 100%; width: var(--fill, 0%); border-radius: 2px; background: var(--bar-color, var(--color-hud-primary)); transition: width 0.6s ease, background 0.6s ease; box-shadow: 0 0 4px var(--bar-color, var(--color-hud-primary)); }
+    .usage-bar-val { font-family: var(--font-tech); font-size: 0.65rem; color: var(--color-hud-neutral); width: 6.5rem; text-align: right; flex-shrink: 0; opacity: 0.8; }
+
+    .rate-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.1rem; }
+    .rate-val { font-family: var(--font-tech); font-size: 0.65rem; color: var(--color-hud-primary-soft); opacity: 0.55; }
+    .spark { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
+    .spark-bar { width: 6px; background: var(--color-hud-primary); opacity: 0.45; border-radius: 1px; min-height: 2px; }
+    .spark-bar.today { opacity: 1; box-shadow: 0 0 4px var(--color-hud-primary); }
+
+    .summary { margin-top: auto; padding-top: 0.5rem; border-top: 1px solid rgba(0,191,255,0.12); flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    .summary-text { font-family: var(--font-tech); font-size: 0.7rem; color: var(--color-hud-primary-soft); opacity: 0.65; }
+    .summary-text span { color: var(--color-hud-neutral); opacity: 1; }
+    .last-updated { font-family: var(--font-tech); font-size: 0.55rem; color: var(--color-hud-primary-soft); opacity: 0.35; }
+
+    .flicker-on-mount { animation: flicker 0.3s steps(1) 3; }
+    @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0} }
+  </style>
+</head>
+<body>
+  <div class="widget-container flicker-on-mount" id="main-container">
+    <div class="background-layers"><div class="widget-background"></div></div>
+    <div class="scanlines"></div>
+    <div class="pattern-layer"></div>
+    <div class="dot-matrix-pattern"></div>
+    <div class="mouse-glow"></div>
+    <div class="resizer resizer-rb" data-direction="SouthEast"></div>
+
+    <div class="content">
+      <header>
+        <h1 data-open-settings>KOJI // AI.OPS</h1>
+        <button class="settings-btn" data-open-settings>⚙</button>
+      </header>
+
+      <div class="service" id="claude-block">
+        <div class="service-header">
+          <span class="service-name">CLAUDE</span>
+          <span class="tier-badge pro" id="claude-tier-badge">PRO</span>
+        </div>
+        <div class="usage-bar-row">
+          <span class="usage-bar-key">IN</span>
+          <div class="bar-track"><div class="bar-fill" id="claude-in-fill"></div></div>
+          <span class="usage-bar-val" id="claude-in-val">-- tokens</span>
+        </div>
+        <div class="usage-bar-row">
+          <span class="usage-bar-key">OUT</span>
+          <div class="bar-track"><div class="bar-fill" id="claude-out-fill"></div></div>
+          <span class="usage-bar-val" id="claude-out-val">-- tokens</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-val" id="claude-rate">-- req/hr</span>
+          <div class="spark" id="claude-spark"></div>
+        </div>
+      </div>
+
+      <div class="service" id="gemini-block">
+        <div class="service-header">
+          <span class="service-name">GEMINI</span>
+          <span class="tier-badge free" id="gemini-tier-badge">FREE</span>
+        </div>
+        <div class="usage-bar-row">
+          <span class="usage-bar-key">RPM</span>
+          <div class="bar-track"><div class="bar-fill" id="gemini-rpm-fill"></div></div>
+          <span class="usage-bar-val" id="gemini-rpm-val">-- / 15</span>
+        </div>
+        <div class="usage-bar-row">
+          <span class="usage-bar-key">DAY</span>
+          <div class="bar-track"><div class="bar-fill" id="gemini-day-fill"></div></div>
+          <span class="usage-bar-val" id="gemini-day-val">-- / 1500</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-val" id="gemini-rate">-- req/hr</span>
+          <div class="spark" id="gemini-spark"></div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="summary-text">TODAY &nbsp;<span id="total-tokens">--</span> tokens</div>
+        <div class="last-updated" id="last-updated">--</div>
+      </div>
+    </div>
+  </div>
+  <script src="logic.js"></script>
+</body>
+</html>
