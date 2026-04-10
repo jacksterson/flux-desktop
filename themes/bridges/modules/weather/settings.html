@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Weather Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared-hud.css">
+  <style>
+    body { padding: 1.2rem; font-family: var(--font-main); color: var(--color-hud-neutral); }
+    h2 { font-family: var(--font-header); font-size: 0.85rem; letter-spacing: 2px; color: var(--color-hud-primary); margin-bottom: 1rem; text-transform: uppercase; }
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-family: var(--font-tech); font-size: 0.7rem; color: var(--color-hud-primary-soft); margin-bottom: 0.3rem; letter-spacing: 1px; text-transform: uppercase; }
+    input[type="text"] {
+      width: 100%; background: rgba(0,191,255,0.05); border: 1px solid var(--color-border-default);
+      color: var(--color-hud-neutral); font-family: var(--font-tech); font-size: 0.85rem;
+      padding: 0.4rem 0.6rem; border-radius: 2px; outline: none;
+    }
+    input[type="text"]:focus { border-color: var(--color-border-active); }
+    .toggle-row { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1rem; }
+    .toggle-label { font-family: var(--font-tech); font-size: 0.75rem; color: var(--color-hud-primary-soft); }
+    input[type="checkbox"] { accent-color: var(--color-hud-primary); width: 14px; height: 14px; }
+    .save-btn {
+      font-family: var(--font-header); font-size: 0.7rem; letter-spacing: 2px;
+      background: rgba(0,191,255,0.1); border: 1px solid var(--color-border-default);
+      color: var(--color-hud-primary); padding: 0.5rem 1.2rem; cursor: pointer;
+      text-transform: uppercase; border-radius: 2px; width: 100%;
+    }
+    .save-btn:hover { background: rgba(0,191,255,0.2); border-color: var(--color-border-active); }
+    .divider { border: none; border-top: 1px solid var(--color-border-default); opacity: 0.4; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h2>KOJI // WEATHER</h2>
+  <div class="field">
+    <label>Location (city or lat,lon)</label>
+    <input type="text" id="location" placeholder="e.g. London or 51.5,-0.12">
+  </div>
+  <hr class="divider">
+  <div class="toggle-row">
+    <input type="checkbox" id="use-simulation">
+    <span class="toggle-label">Use simulation (demo mode)</span>
+  </div>
+  <div class="toggle-row">
+    <input type="checkbox" id="show-7-hourly">
+    <span class="toggle-label">Show 7 hourly items (default: 5)</span>
+  </div>
+  <hr class="divider">
+  <button class="save-btn" id="save-btn">SAVE SETTINGS</button>
+  <script>
+    const KEYS = {
+      location: 'koji_weather_location',
+      simulation: 'koji_weather_simulation',
+      hourly7: 'koji_weather_hourly7',
+    };
+    document.getElementById('location').value = localStorage.getItem(KEYS.location) || '';
+    document.getElementById('use-simulation').checked = localStorage.getItem(KEYS.simulation) === 'true';
+    document.getElementById('show-7-hourly').checked = localStorage.getItem(KEYS.hourly7) === 'true';
+    document.getElementById('save-btn').addEventListener('click', () => {
+      localStorage.setItem(KEYS.location, document.getElementById('location').value.trim());
+      localStorage.setItem(KEYS.simulation, document.getElementById('use-simulation').checked);
+      localStorage.setItem(KEYS.hourly7, document.getElementById('show-7-hourly').checked);
+      window.dispatchEvent(new StorageEvent('storage', { key: KEYS.location }));
+      WidgetAPI?.widget?.closeSettings?.();
+    });
+  </script>
+</body>
+</html>

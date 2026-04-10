@@ -1,0 +1,17 @@
+{
+  "id": "weather",
+  "name": "Koji Pro // Weather",
+  "version": "2.0.0",
+  "author": "Bridges",
+  "window": {
+    "width": 600,
+    "height": 900,
+    "transparent": true,
+    "decorations": false,
+    "windowLevel": "desktop",
+    "resizable": true
+  },
+  "permissions": ["window:drag"],
+  "entry": "index.html",
+  "settings": "settings.html"
+}
