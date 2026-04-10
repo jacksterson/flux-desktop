@@ -1,0 +1,16 @@
+{
+  "id": "system-stats",
+  "name": "Koji Pro // Stats",
+  "version": "2.0.0",
+  "author": "Bridges",
+  "window": {
+    "width": 400,
+    "height": 650,
+    "transparent": true,
+    "decorations": false,
+    "windowLevel": "desktop",
+    "resizable": true
+  },
+  "permissions": ["system:stats", "window:drag"],
+  "entry": "index.html"
+}

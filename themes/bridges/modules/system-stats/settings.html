@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CONFIGURE // SYSTEM STATS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-hud-primary: #00BFFF;
+            --color-hud-primary-soft: #4FC3F7;
+            --color-hud-neutral: #E8EAED;
+            --color-hud-danger: #FF2020;
+            --color-bg-base: rgba(10, 15, 26, 0.95);
+            --color-bg-panel: rgba(0, 191, 255, 0.08);
+            --color-bg-panel-hover: rgba(0, 191, 255, 0.15);
+            --color-border-default: rgba(79, 195, 247, 0.45);
+            --font-main: 'Rajdhani', sans-serif;
+            --font-tech: 'Share Tech Mono', monospace;
+            --font-header: 'Orbitron', sans-serif;
+            --mouse-x: 50%; --mouse-y: 50%;
+            --pattern-opacity: 0;
+        }
+
+        html { font-size: 14px; height: 100%; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+        body {
+            background: transparent;
+            color: var(--color-hud-primary);
+            font-family: var(--font-main);
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            padding: 4px;
+        }
+
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%; opacity: 0.15;
+        }
+
+        .hud-container {
+            width: 100%; height: 100%;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border-default);
+            position: relative;
+            backdrop-filter: blur(25px);
+            clip-path: polygon(0 0, 96% 0, 100% 4%, 100% 100%, 4% 100%, 0 96%);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0, 191, 255, 0.15);
+        }
+
+        .pattern-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
+            opacity: var(--pattern-opacity); transition: opacity 0.4s ease;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='none' stroke='%2300BFFF' stroke-width='0.5' stroke-opacity='0.4'/%3E%3C/svg%3E");
+            background-size: 30px 30px;
+            mask-image: radial-gradient(circle 140px at var(--mouse-x) var(--mouse-y), black 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+        }
+
+        .content { position: relative; z-index: 5; display: flex; flex-direction: column; height: 100%; padding: 1rem 1.2rem; gap: 0.8rem; }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--color-border-default);
+            padding-bottom: 0.5rem;
+            flex-shrink: 0;
+        }
+        h2 { font-family: var(--font-header); font-size: 1rem; letter-spacing: 2px; color: var(--color-hud-neutral); }
+
+        .scroll-area { flex: 1; overflow-y: auto; padding-right: 4px; }
+        .category { margin-bottom: 1.2rem; }
+        .cat-title { font-size: 0.7rem; opacity: 0.6; letter-spacing: 2px; margin-bottom: 0.6rem; text-transform: uppercase; font-weight: 800; color: var(--color-hud-primary-soft); border-left: 2px solid var(--color-hud-primary); padding-left: 6px; }
+        
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; padding: 0.4rem 0.6rem; background: var(--color-bg-panel); border: 1px solid transparent; transition: all 0.2s; }
+        .row:hover { background: var(--color-bg-panel-hover); border-color: var(--color-border-default); }
+        label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--color-hud-primary-soft); }
+        
+        select, input[type="text"], input[type="number"] { 
+            background: #000; border: 1px solid var(--color-border-default); color: #fff; 
+            padding: 4px 8px; font-family: var(--font-tech); font-size: 0.8rem; outline: none;
+            transition: border-color 0.2s;
+        }
+        select:focus, input:focus { border-color: var(--color-hud-primary); }
+        select { cursor: pointer; appearance: none; padding-right: 20px; background-image: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 4l3 3 3-3' stroke='%2300BFFF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+        option { background: #0A0F1A; color: #fff; }
+
+        input[type="range"] { accent-color: var(--color-hud-primary); cursor: pointer; width: 100px; }
+
+        .close-btn { 
+            cursor: pointer !important; color: #fff; background: var(--color-hud-danger);
+            font-family: var(--font-tech); font-weight: bold; font-size: 1.1rem; 
+            width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+            transition: 0.2s; pointer-events: auto;
+        }
+        .close-btn:hover { background: #ff5252; box-shadow: 0 0 10px var(--color-hud-danger); }
+
+        .footer-note { padding-top: 0.5rem; font-size: 0.65rem; opacity: 0.4; border-top: 1px solid var(--color-border-default); font-family: var(--font-tech); }
+
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: var(--color-border-default); }
+
+        .resizer { position: absolute; background: transparent; z-index: 1000; pointer-events: auto; }
+        .resizer-rb { bottom: 0; right: 0; width: 20px; height: 20px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--color-hud-primary) 50%); opacity: 0.4; }
+    </style>
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div class="hud-container" id="main-container">
+        <div class="pattern-layer" id="spotlight"></div>
+        <div class="resizer resizer-rb" data-direction="SouthEast"></div>
+
+        <div class="content">
+            <header id="drag-header">
+                <h2>CONFIGURE // STATS</h2>
+                <div class="close-btn" id="close-btn">X</div>
+            </header>
+
+            <div class="scroll-area">
+                <div class="category">
+                    <div class="cat-title">Mission Thresholds</div>
+                    <div class="row"><label>Amber Usage %</label><input type="number" id="cfg-amber-usage"></div>
+                    <div class="row"><label>Red Usage %</label><input type="number" id="cfg-red-usage"></div>
+                    <div class="row"><label>Amber Temp °C</label><input type="number" id="cfg-amber-temp"></div>
+                    <div class="row"><label>Red Temp °C</label><input type="number" id="cfg-red-temp"></div>
+                </div>
+
+                <div class="category">
+                    <div class="cat-title">Display Chromatics</div>
+                    <div class="row"><label>Background Alpha</label><input type="range" id="cfg-bg-alpha" min="5" max="100"></div>
+                    <div class="row"><label>Primary Accent</label><input type="color" id="cfg-clr-accent" style="width: 30px; height: 20px; border:none; background:none; cursor:pointer;"></div>
+                    <div class="row"><label>Secondary Blue</label><input type="color" id="cfg-soft-blue" style="width: 30px; height: 20px; border:none; background:none; cursor:pointer;"></div>
+                </div>
+
+                <div class="category">
+                    <div class="cat-title">System Identity</div>
+                    <div class="row"><label>Main Font</label><input type="text" id="cfg-font-main"></div>
+                    <div class="row"><label>Tech Font</label><input type="text" id="cfg-font-tech"></div>
+                </div>
+            </div>
+
+            <div class="footer-note">SYNCED // PERSISTENT STATE SAVED</div>
+        </div>
+    </div>
+
+    <script src="flux-module://_flux/widget-api.js"></script>
+    <script>
+        const DEFAULT_STATE = {
+            cfg: { amberUsage: 70, redUsage: 90, amberTemp: 75, redTemp: 85, bgAlpha: 80 },
+            theme: {
+                primary: "#00BFFF",
+                primary_soft: "#4FC3F7",
+                caution: "#FFC107",
+                danger: "#FF2020",
+                font_main: "'Rajdhani', sans-serif",
+                font_tech: "'Share Tech Mono', monospace"
+            }
+        };
+
+        let state = JSON.parse(localStorage.getItem("flux_sys_stats_state")) || DEFAULT_STATE;
+
+        function syncUI() {
+            document.getElementById("cfg-amber-usage").value = state.cfg.amberUsage;
+            document.getElementById("cfg-red-usage").value = state.cfg.redUsage;
+            document.getElementById("cfg-amber-temp").value = state.cfg.amberTemp;
+            document.getElementById("cfg-red-temp").value = state.cfg.redTemp;
+            document.getElementById("cfg-bg-alpha").value = state.cfg.bgAlpha;
+            document.getElementById("cfg-clr-accent").value = state.theme.primary;
+            document.getElementById("cfg-soft-blue").value = state.theme.primary_soft;
+            document.getElementById("cfg-font-main").value = state.theme.font_main;
+            document.getElementById("cfg-font-tech").value = state.theme.font_tech;
+        }
+
+        function save() {
+            state.cfg.amberUsage = parseInt(document.getElementById("cfg-amber-usage").value);
+            state.cfg.redUsage = parseInt(document.getElementById("cfg-red-usage").value);
+            state.cfg.amberTemp = parseInt(document.getElementById("cfg-amber-temp").value);
+            state.cfg.redTemp = parseInt(document.getElementById("cfg-red-temp").value);
+            state.cfg.bgAlpha = parseInt(document.getElementById("cfg-bg-alpha").value);
+            state.theme.primary = document.getElementById("cfg-clr-accent").value;
+            state.theme.primary_soft = document.getElementById("cfg-soft-blue").value;
+            state.theme.font_main = document.getElementById("cfg-font-main").value;
+            state.theme.font_tech = document.getElementById("cfg-font-tech").value;
+
+            localStorage.setItem("flux_sys_stats_state", JSON.stringify(state));
+            // Manually dispatch storage event: localStorage.setItem() does NOT fire 'storage'
+            // in the same window that set it — only in other windows sharing the origin.
+            // This triggers live sync to the main module window.
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        document.querySelectorAll("input, select").forEach(input => {
+            input.oninput = save;
+        });
+
+        // Spotlight
+        const container = document.getElementById("main-container");
+        window.addEventListener("mousemove", (e) => {
+            const rect = container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            container.style.setProperty("--mouse-x", `${x}px`);
+            container.style.setProperty("--mouse-y", `${y}px`);
+            container.style.setProperty("--pattern-opacity", "1");
+        });
+
+        // Dragging
+        document.getElementById("drag-header").onmousedown = (e) => {
+            if (e.target.id !== "close-btn") WidgetAPI.widget.drag(e);
+        };
+
+        // Resizing
+        document.querySelector(".resizer-rb").onmousedown = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            WidgetAPI.widget.resize("SouthEast");
+        };
+
+        const closeBtn = document.getElementById("close-btn");
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            WidgetAPI.widget.close();
+        };
+
+        syncUI();
+    </script>
+</body>
+</html>
