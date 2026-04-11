@@ -64,6 +64,20 @@ class FluxGraph {
     const w = this.canvas.width / (window.devicePixelRatio || 1);
     const h = this.canvas.height / (window.devicePixelRatio || 1);
     this.ctx.clearRect(0, 0, w, h);
+
+    // Grid lines at 25%, 50%, 75%
+    this.ctx.save();
+    this.ctx.strokeStyle = 'rgba(0,191,255,0.06)';
+    this.ctx.lineWidth = 1;
+    [0.25, 0.50, 0.75].forEach(frac => {
+      const y = h - frac * h;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(w, y);
+      this.ctx.stroke();
+    });
+    this.ctx.restore();
+
     if (this.history.length < 2) return;
 
     const step = w / (this.maxPoints - 1);
@@ -183,8 +197,8 @@ _unlisteners.push(WidgetAPI.system.subscribe('network', (data) => {
   const rootStyle = getComputedStyle(document.documentElement);
   const primary = rootStyle.getPropertyValue('--color-hud-primary').trim();
 
-  document.getElementById("net-in").textContent  = `IN: ${fmtBS(netIn)}`;
-  document.getElementById("net-out").textContent = `OUT: ${fmtBS(netOut)}`;
+  document.getElementById("net-in").textContent  = fmtBS(netIn);
+  document.getElementById("net-out").textContent = fmtBS(netOut);
   netGraph.update(netIn + netOut, 1024 * 1024 * 2, primary);
 }));
 
@@ -194,7 +208,7 @@ _unlisteners.push(WidgetAPI.system.subscribe('disk-io', (data) => {
   const rootStyle = getComputedStyle(document.documentElement);
   const primary = rootStyle.getPropertyValue('--color-hud-primary').trim();
 
-  document.getElementById("disk-read").textContent  = `R: ${fmtBS(read)}`;
+  document.getElementById("disk-read").textContent  = fmtBS(read);
   document.getElementById("disk-write").textContent = `W: ${fmtBS(write)}`;
   diskGraph.update(read + write, 1024 * 1024 * 10, primary);
 }));
