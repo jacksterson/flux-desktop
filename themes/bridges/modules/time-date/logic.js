@@ -18,7 +18,7 @@ function update() {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const date = String(now.getDate()).padStart(2, '0');
     const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    document.getElementById("date").textContent = `${year}.${month}.${date} // ${days[now.getDay()]}`;
+    document.getElementById("date").innerHTML = `${year}.${month}.${date}<span class="date-sep"> // </span>${days[now.getDay()]}`;
 
     // 3. Mission Time
     uptimeSecs++;
@@ -53,7 +53,7 @@ async function fetchSunTimes() {
     const rise = d.daily.sunrise[0].slice(11,16);
     const set  = d.daily.sunset[0].slice(11,16);
     const el = document.getElementById('sun-times');
-    if (el) { el.textContent = `☀ ${rise} / ${set}`; el.classList.add('loaded'); }
+    if (el) { el.innerHTML = `<span class="sol-icon"></span> ${rise} / ${set}`; el.classList.add('loaded'); }
   } catch { /* silent */ }
 }
 fetchSunTimes();
