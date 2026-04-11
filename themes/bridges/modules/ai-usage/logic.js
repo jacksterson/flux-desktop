@@ -54,7 +54,7 @@ function renderSpark(containerId, weekData) {
   const max = Math.max(...weekData, 1);
   const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 … Sun=6
   el.innerHTML = weekData.map((v, i) => {
-    const h = Math.max(2, Math.round((v / max) * 16));
+    const h = Math.max(2, Math.round((v / max) * 20));
     return `<div class="spark-bar${i === todayIdx ? ' today' : ''}" style="height:${h}px"></div>`;
   }).join('');
 }
