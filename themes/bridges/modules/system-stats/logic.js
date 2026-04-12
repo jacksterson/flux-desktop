@@ -185,12 +185,6 @@ class DualGraph {
   }
 }
 
-function getStatusColor(val, temp) {
-  const root = getComputedStyle(document.documentElement);
-  if (val >= cfg.redUsage || temp >= cfg.redTemp) return root.getPropertyValue('--color-hud-danger').trim();
-  if (val >= cfg.amberUsage || temp >= cfg.amberTemp) return root.getPropertyValue('--color-hud-caution').trim();
-  return root.getPropertyValue('--color-hud-primary').trim();
-}
 
 // --- Uptime ---
 let uptimeSeconds = 0;
