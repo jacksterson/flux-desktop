@@ -34,6 +34,22 @@ function setBar(fillId, metaId, pct, metaText, warnAt, dangerAt) {
   if (meta) meta.textContent = metaText;
 }
 
+// For bars with CSS gradient (MEM) — only updates width, not color
+function setBarWidth(fillId, metaId, pct, metaText) {
+  const fill = document.getElementById(fillId);
+  const meta = document.getElementById(metaId);
+  if (fill) fill.style.setProperty('--fill', Math.min(100, Math.max(0, pct)) + '%');
+  if (meta) meta.textContent = metaText;
+}
+
+// Returns rgba color string (with ALPHA placeholder) for dot graphs
+// Uses same thresholds as getStatusColor but avoids CSS var comparison
+function dotColor(val, temp) {
+  if (val >= cfg.redUsage   || (temp && temp >= cfg.redTemp))   return 'rgba(255,32,32,ALPHA)';
+  if (val >= cfg.amberUsage || (temp && temp >= cfg.amberTemp)) return 'rgba(255,193,7,ALPHA)';
+  return 'rgba(0,191,255,ALPHA)';
+}
+
 // --- Graph Engine ---
 class DotGraph {
   constructor(canvas, color, max) {
@@ -119,14 +135,14 @@ class DualGraph {
 
   _onResize() {
     const dpr = window.devicePixelRatio || 1;
-    for (const c of [this.canvasA, this.canvasB]) {
+    const ctxMap = [[this.canvasA, this.ctxA], [this.canvasB, this.ctxB]];
+    for (const [c, ctx] of ctxMap) {
       const w = c.clientWidth, h = c.clientHeight;
       if (!w || !h) continue;
       c.width = Math.round(w * dpr);
       c.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    this.ctxA.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctxB.setTransform(dpr, 0, 0, dpr, 0, 0);
     this._draw();
   }
 
@@ -195,11 +211,20 @@ function _cleanup() {
 }
 window._fluxCleanup = _cleanup;
 
-const cpuGraph = new FluxGraph("cpu-graph");
-const ramGraph = new FluxGraph("ram-graph");
-const gpuGraph = new FluxGraph("gpu-graph");
-const netGraph = new FluxGraph("net-graph");
-const diskGraph = new FluxGraph("disk-graph");
+const gCpu  = new DotGraph(document.getElementById('g-cpu'),  'rgba(0,191,255,ALPHA)', 100);
+const gGpu  = new DotGraph(document.getElementById('g-gpu'),  'rgba(0,191,255,ALPHA)', 100);
+const gMem  = new DualGraph(
+  document.getElementById('g-mem-a'), document.getElementById('g-mem-b'),
+  'rgba(255,107,26,ALPHA)', 'rgba(0,191,255,ALPHA)', 1
+);
+const gNet  = new DualGraph(
+  document.getElementById('g-net-a'), document.getElementById('g-net-b'),
+  'rgba(0,191,255,ALPHA)', 'rgba(255,107,26,ALPHA)', 1
+);
+const gDisk = new DualGraph(
+  document.getElementById('g-disk-a'), document.getElementById('g-disk-b'),
+  'rgba(0,191,255,ALPHA)', 'rgba(255,107,26,ALPHA)', 1
+);
 
 WidgetAPI.system.uptime().then((secs) => {
   uptimeSeconds = secs;
@@ -212,67 +237,71 @@ _uptimeInterval = setInterval(() => {
 }, 1000);
 
 _unlisteners.push(WidgetAPI.system.subscribe('cpu', (data) => {
-  const cpuPct = data.avg_usage;
+  const cpuPct  = data.avg_usage;
   const cpuTemp = data.cpu_temp || 0;
-  const color = getStatusColor(cpuPct, cpuTemp);
 
-  // Hero display
-  document.getElementById("cpu-usage").textContent = `${cpuPct.toFixed(1)}%`;
-  document.getElementById("cpu-temp").textContent = `${cpuTemp.toFixed(0)}°C`;
-  document.getElementById("cpu-freq").textContent = `${toGHz(data.frequency)} GHz`;
+  document.getElementById('cpu-usage').textContent = `${cpuPct.toFixed(1)}%`;
+  document.getElementById('cpu-temp').textContent  = `${cpuTemp.toFixed(0)}°C`;
+  document.getElementById('cpu-freq').textContent  = `${toGHz(data.frequency)} GHz`;
 
-  // Hero glow
-  document.getElementById("main-container").style.setProperty('--current-glow', getGlowColor(cpuPct, cfg.amberUsage, cfg.redUsage));
+  document.getElementById('main-container').style.setProperty(
+    '--current-glow', getGlowColor(cpuPct, cfg.amberUsage, cfg.redUsage)
+  );
 
-  // CPU scan bar
   setBar('cpu-bar-fill', 'cpu-bar-meta', cpuPct, `${cpuPct.toFixed(1)}%`, cfg.amberUsage, cfg.redUsage);
 
-  cpuGraph.update(cpuPct, 100, color);
+  gCpu.color = dotColor(cpuPct, cpuTemp);
+  gCpu.push(cpuPct);
 }));
 
 _unlisteners.push(WidgetAPI.system.subscribe('memory', (data) => {
-  const pct = (data.used / data.total) * 100;
-  const color = getStatusColor(pct, 0);
+  const usedGiB  = parseFloat(toGiB(data.used));
+  const totalGiB = parseFloat(toGiB(data.total));
+  const availGiB = parseFloat((totalGiB - usedGiB).toFixed(1));
+  const usedPct  = (data.used / data.total) * 100;
+  const availPct = (availGiB / totalGiB) * 100;
 
-  document.getElementById("ram-used").textContent = `${toGiB(data.used)}/${toGiB(data.total)} GiB`;
+  document.getElementById('mem-total-label').textContent = `${totalGiB} GiB`;
 
-  // RAM scan bar (also updates ram-percentage label)
-  setBar('ram-bar-fill', 'ram-percentage', pct, `${pct.toFixed(1)}%`, cfg.amberUsage, cfg.redUsage);
+  setBarWidth('mem-used-fill',  'mem-used-val',  usedPct,  `${usedGiB} GiB`);
+  setBarWidth('mem-avail-fill', 'mem-avail-val', availPct, `${availGiB} GiB`);
 
-  ramGraph.update(pct, 100, color);
+  gMem.fixedMax = totalGiB;
+  gMem.push(usedGiB, availGiB);
 }));
 
 _unlisteners.push(WidgetAPI.system.subscribe('gpu', (data) => {
   if (!data) return;
-  const color = getStatusColor(data.vram_percentage, data.temp || 0);
+  const temp  = data.temp || 0;
+  const vramP = data.vram_percentage;
 
-  // GPU scan bar (also updates gpu-usage-pct label)
-  setBar('gpu-bar-fill', 'gpu-usage-pct', data.vram_percentage, `${data.vram_percentage.toFixed(1)}%`, cfg.amberUsage, cfg.redUsage);
+  document.getElementById('gpu-temp-label').textContent = `${temp.toFixed(0)}°C`;
 
-  gpuGraph.update(data.vram_percentage, 100, color);
+  setBar('gpu-bar-fill', 'gpu-vram-pct', vramP, `${vramP.toFixed(1)}%`, cfg.amberUsage, cfg.redUsage);
+
+  gGpu.color = dotColor(vramP, temp);
+  gGpu.push(vramP);
 }));
 
 _unlisteners.push(WidgetAPI.system.subscribe('network', (data) => {
   const interfaces = Array.isArray(data) ? data : [data];
-  const netIn  = interfaces.reduce((sum, iface) => sum + (iface.received    || 0), 0);
-  const netOut = interfaces.reduce((sum, iface) => sum + (iface.transmitted || 0), 0);
-  const rootStyle = getComputedStyle(document.documentElement);
-  const primary = rootStyle.getPropertyValue('--color-hud-primary').trim();
+  const netIn  = interfaces.reduce((s, i) => s + (i.received    || 0), 0);
+  const netOut = interfaces.reduce((s, i) => s + (i.transmitted || 0), 0);
 
-  document.getElementById("net-in").textContent  = fmtBS(netIn);
-  document.getElementById("net-out").textContent = fmtBS(netOut);
-  netGraph.update(netIn + netOut, 1024 * 1024 * 2, primary);
+  document.getElementById('net-in-val').textContent  = fmtBS(netIn);
+  document.getElementById('net-out-val').textContent = fmtBS(netOut);
+
+  gNet.push(netIn, netOut);
 }));
 
 _unlisteners.push(WidgetAPI.system.subscribe('disk-io', (data) => {
   const read  = data.read  || 0;
   const write = data.write || 0;
-  const rootStyle = getComputedStyle(document.documentElement);
-  const primary = rootStyle.getPropertyValue('--color-hud-primary').trim();
 
-  document.getElementById("disk-read").textContent  = fmtBS(read);
-  document.getElementById("disk-write").textContent = `W: ${fmtBS(write)}`;
-  diskGraph.update(read + write, 1024 * 1024 * 10, primary);
+  setBar('disk-read-fill',  'disk-read-val',  (read  / (1024 * 1024 * 50)) * 100, fmtBS(read),  cfg.amberUsage, cfg.redUsage);
+  setBar('disk-write-fill', 'disk-write-val', (write / (1024 * 1024 * 50)) * 100, fmtBS(write), cfg.amberUsage, cfg.redUsage);
+
+  gDisk.push(read, write);
 }));
 
 // --- Spotlight & Drag ---
