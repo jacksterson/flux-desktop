@@ -35,75 +35,137 @@ function setBar(fillId, metaId, pct, metaText, warnAt, dangerAt) {
 }
 
 // --- Graph Engine ---
-class FluxGraph {
-  constructor(canvasId) {
-    this.canvas = document.getElementById(canvasId);
-    this.ctx = this.canvas.getContext("2d");
+class DotGraph {
+  constructor(canvas, color, max) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.color = color; // CSS color with 'ALPHA' placeholder, e.g. 'rgba(0,191,255,ALPHA)'
+    this.max = max;
     this.history = [];
-    this.maxPoints = 40;
-    this.resize();
-    window.addEventListener("resize", () => this.resize());
+    this._ro = new ResizeObserver(() => this._onResize());
+    this._ro.observe(canvas);
+    this._onResize();
   }
 
-  resize() {
+  _onResize() {
     const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    if (rect.width === 0) return;
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    if (!w || !h) return;
+    this.canvas.width = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this._draw();
   }
 
-  update(value, max, color) {
+  push(value) {
     this.history.push(value);
-    if (this.history.length > this.maxPoints) this.history.shift();
-    this.draw(max, color);
+    if (this.history.length > 80) this.history.shift();
+    this._draw();
   }
 
-  draw(max, color) {
-    const w = this.canvas.width / (window.devicePixelRatio || 1);
-    const h = this.canvas.height / (window.devicePixelRatio || 1);
+  _draw() {
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    if (!w || !h) return;
     this.ctx.clearRect(0, 0, w, h);
 
-    // Grid lines at 25%, 50%, 75%
+    const DOT = 4, R = 1.7;
+    const numCols = Math.floor(w / DOT);
+    const numRows = Math.floor(h / DOT);
+
+    // Horizontal guide lines at 25%, 50%, 75%
     this.ctx.save();
-    this.ctx.strokeStyle = 'rgba(0,191,255,0.06)';
+    this.ctx.strokeStyle = 'rgba(0,191,255,0.07)';
     this.ctx.lineWidth = 1;
-    [0.25, 0.50, 0.75].forEach(frac => {
-      const y = h - frac * h;
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(w, y);
-      this.ctx.stroke();
+    [0.25, 0.5, 0.75].forEach(f => {
+      const y = h - f * h;
+      this.ctx.beginPath(); this.ctx.moveTo(0, y); this.ctx.lineTo(w, y); this.ctx.stroke();
     });
     this.ctx.restore();
 
-    if (this.history.length < 2) return;
-
-    const step = w / (this.maxPoints - 1);
-    const startX = w - ((this.history.length - 1) * step);
-    const m = Math.max(1, max);
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(startX, h);
-    for (let i = 0; i < this.history.length; i++) {
-      const x = startX + (i * step);
-      this.ctx.lineTo(x, h - (Math.max(0.5, this.history[i]) / m) * h);
+    const slice = this.history.slice(-numCols);
+    for (let ci = 0; ci < slice.length; ci++) {
+      const colX = (numCols - slice.length + ci) * DOT;
+      const filled = Math.round((Math.min(slice[ci], this.max) / this.max) * numRows);
+      for (let ri = 0; ri < filled; ri++) {
+        const alpha = 0.25 + (ri / Math.max(filled - 1, 1)) * 0.55;
+        this.ctx.fillStyle = this.color.replace('ALPHA', alpha.toFixed(2));
+        this.ctx.beginPath();
+        this.ctx.arc(colX + DOT / 2, h - (ri + 0.5) * DOT, R, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
     }
-    this.ctx.lineTo(w, h);
-    this.ctx.closePath();
-    this.ctx.fillStyle = color + "11";
-    this.ctx.fill();
+  }
+}
 
-    this.ctx.beginPath();
-    for (let i = 0; i < this.history.length; i++) {
-      const x = startX + (i * step);
-      const y = h - (Math.max(0.5, this.history[i]) / m) * h;
-      if (i === 0) this.ctx.moveTo(x, y); else this.ctx.lineTo(x, y);
+class DualGraph {
+  constructor(canvasA, canvasB, colorA, colorB, initialMax) {
+    this.canvasA = canvasA;
+    this.canvasB = canvasB;
+    this.ctxA = canvasA.getContext('2d');
+    this.ctxB = canvasB.getContext('2d');
+    this.colorA = colorA; // 'rgba(0,191,255,ALPHA)'
+    this.colorB = colorB; // 'rgba(255,107,26,ALPHA)'
+    this.max = initialMax || 1;
+    this.fixedMax = null; // set externally to pin scale (e.g. total RAM)
+    this.histA = [];
+    this.histB = [];
+    this._ro = new ResizeObserver(() => this._onResize());
+    this._ro.observe(canvasA);
+    this._ro.observe(canvasB);
+    this._onResize();
+  }
+
+  _onResize() {
+    const dpr = window.devicePixelRatio || 1;
+    for (const c of [this.canvasA, this.canvasB]) {
+      const w = c.clientWidth, h = c.clientHeight;
+      if (!w || !h) continue;
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
     }
-    this.ctx.strokeStyle = color;
-    this.ctx.lineWidth = 1;
-    this.ctx.stroke();
+    this.ctxA.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctxB.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this._draw();
+  }
+
+  push(a, b) {
+    this.histA.push(a); this.histB.push(b);
+    if (this.histA.length > 80) { this.histA.shift(); this.histB.shift(); }
+    if (!this.fixedMax) {
+      this.max = Math.max(1, ...this.histA.slice(-60), ...this.histB.slice(-60));
+    } else {
+      this.max = this.fixedMax;
+    }
+    this._draw();
+  }
+
+  _drawChan(ctx, canvas, hist, color, fromTop) {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    ctx.clearRect(0, 0, w, h);
+    const DOT = 4, R = 1.7;
+    const numCols = Math.floor(w / DOT);
+    const numRows = Math.floor(h / DOT);
+    const slice = hist.slice(-numCols);
+    for (let ci = 0; ci < slice.length; ci++) {
+      const colX = (numCols - slice.length + ci) * DOT;
+      const filled = Math.round((Math.min(slice[ci], this.max) / this.max) * numRows);
+      for (let ri = 0; ri < filled; ri++) {
+        const alpha = 0.25 + (ri / Math.max(filled - 1, 1)) * 0.55;
+        ctx.fillStyle = color.replace('ALPHA', alpha.toFixed(2));
+        const dotY = fromTop ? (ri + 0.5) * DOT : h - (ri + 0.5) * DOT;
+        ctx.beginPath();
+        ctx.arc(colX + DOT / 2, dotY, R, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  _draw() {
+    this._drawChan(this.ctxA, this.canvasA, this.histA, this.colorA, false); // A: bottom→up
+    this._drawChan(this.ctxB, this.canvasB, this.histB, this.colorB, true);  // B: top→down
   }
 }
 
