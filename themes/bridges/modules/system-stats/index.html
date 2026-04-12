@@ -209,72 +209,95 @@
         </div>
       </header>
 
-      <!-- HERO: CPU% primary display -->
+      <!-- CPU SECTION -->
       <div class="hero">
         <div class="hero-value" id="cpu-usage">--%</div>
         <div class="hero-label">CPU LOAD</div>
         <div class="hero-sub"><span id="cpu-freq">-- GHz</span> &nbsp;|&nbsp; <span id="cpu-temp">--°C</span></div>
       </div>
-
-      <!-- SCAN BARS -->
-      <div class="scan-bars" id="cpu-section">
-        <!-- CPU bar (mirrors hero, gives visual bar weight) -->
+      <div class="scan-bars">
         <div class="bar-row">
           <div class="bar-key">CPU</div>
           <div class="bar-track"><div class="bar-fill" id="cpu-bar-fill"></div></div>
           <div class="bar-meta" id="cpu-bar-meta">--%</div>
         </div>
-        <!-- GPU bar -->
+      </div>
+      <canvas class="dmg" id="g-cpu"></canvas>
+
+      <!-- GPU SECTION -->
+      <div class="sec-div"></div>
+      <div class="sec-t">GPU <span id="gpu-temp-label">--°C</span></div>
+      <div class="scan-bars">
         <div class="bar-row">
-          <div class="bar-key">GPU</div>
+          <div class="bar-key">VRAM</div>
           <div class="bar-track"><div class="bar-fill" id="gpu-bar-fill"></div></div>
-          <div class="bar-meta" id="gpu-usage-pct">--%</div>
+          <div class="bar-meta" id="gpu-vram-pct">--%</div>
         </div>
-        <!-- RAM bar -->
+      </div>
+      <canvas class="dmg" id="g-gpu"></canvas>
+
+      <!-- MEM SECTION -->
+      <div class="sec-div"></div>
+      <div class="sec-t">MEM <span id="mem-total-label">-- GiB</span></div>
+      <div class="scan-bars">
         <div class="bar-row">
-          <div class="bar-key">RAM</div>
-          <div class="bar-track"><div class="bar-fill" id="ram-bar-fill"></div></div>
-          <div class="bar-meta" id="ram-percentage">--%</div>
+          <div class="bar-key">USED</div>
+          <div class="bar-track"><div class="bar-fill mem-used" id="mem-used-fill"></div></div>
+          <div class="bar-meta" id="mem-used-val">-- GiB</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-key">AVAIL</div>
+          <div class="bar-track"><div class="bar-fill mem-avail" id="mem-avail-fill"></div></div>
+          <div class="bar-meta" id="mem-avail-val">-- GiB</div>
         </div>
       </div>
-
-      <!-- CPU HISTORY GRAPH -->
-      <div class="graph-section">
-        <div class="graph-label">CPU HISTORY</div>
-        <div class="graph-wrap">
-          <canvas id="cpu-graph"></canvas>
-        </div>
+      <div class="dual-wrap">
+        <div class="dual-center"></div>
+        <div class="dual-up"><canvas id="g-mem-a"></canvas></div>
+        <div class="dual-down"><canvas id="g-mem-b"></canvas></div>
+      </div>
+      <div class="glabels" style="flex-shrink:0">
+        <div class="glbl" style="color:var(--color-hud-caution)">▲ USED</div>
+        <div class="glbl" style="color:var(--color-hud-primary)">AVAIL ▼</div>
       </div>
 
-      <!-- METRICS FOOTER -->
-      <div class="metrics-row">
-        <div class="metric">
-          <div class="metric-label">NET IN</div>
-          <div class="metric-value" id="net-in">-- B/s</div>
+      <!-- NET SECTION -->
+      <div class="sec-div"></div>
+      <div class="sec-t">NET</div>
+      <div class="dual-wrap">
+        <div class="dual-center"></div>
+        <div class="dual-up"><canvas id="g-net-a"></canvas></div>
+        <div class="dual-down"><canvas id="g-net-b"></canvas></div>
+      </div>
+      <div class="glabels" style="flex-shrink:0">
+        <div class="glbl" style="color:var(--color-hud-primary)">▲ IN &nbsp;<span id="net-in-val">-- B/s</span></div>
+        <div class="glbl" style="color:var(--color-hud-alert)">OUT <span id="net-out-val">-- B/s</span> ▼</div>
+      </div>
+
+      <!-- DISK SECTION -->
+      <div class="sec-div"></div>
+      <div class="sec-t">DISK</div>
+      <div class="scan-bars">
+        <div class="bar-row">
+          <div class="bar-key">READ</div>
+          <div class="bar-track"><div class="bar-fill" id="disk-read-fill"></div></div>
+          <div class="bar-meta" id="disk-read-val">-- B/s</div>
         </div>
-        <div class="metric">
-          <div class="metric-label">NET OUT</div>
-          <div class="metric-value" id="net-out">-- B/s</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">DISK R/W</div>
-          <div class="metric-value" id="disk-read">-- B/s</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">RAM USED</div>
-          <div class="metric-value" id="ram-used">--/-- GiB</div>
+        <div class="bar-row">
+          <div class="bar-key">WRITE</div>
+          <div class="bar-track"><div class="bar-fill" id="disk-write-fill"></div></div>
+          <div class="bar-meta" id="disk-write-val">-- B/s</div>
         </div>
       </div>
-    </div>
-
-    <!-- Hidden canvases: logic.js instantiates all 5 FluxGraph objects.
-         ram-graph, gpu-graph, net-graph, disk-graph are kept in DOM
-         but hidden so FluxGraph constructors don't throw. -->
-    <div class="hidden-graphs">
-      <canvas id="ram-graph" width="1" height="1"></canvas>
-      <canvas id="gpu-graph" width="1" height="1"></canvas>
-      <canvas id="net-graph" width="1" height="1"></canvas>
-      <canvas id="disk-graph" width="1" height="1"></canvas>
+      <div class="dual-wrap">
+        <div class="dual-center"></div>
+        <div class="dual-up"><canvas id="g-disk-a"></canvas></div>
+        <div class="dual-down"><canvas id="g-disk-b"></canvas></div>
+      </div>
+      <div class="glabels" style="flex-shrink:0">
+        <div class="glbl" style="color:var(--color-hud-primary)">▲ READ</div>
+        <div class="glbl" style="color:var(--color-hud-alert)">WRITE ▼</div>
+      </div>
     </div>
   </div>
   <script src="logic.js"></script>
