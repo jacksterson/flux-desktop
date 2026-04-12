@@ -126,47 +126,65 @@
       flex-shrink: 0; opacity: 1.0;
     }
 
-    .graph-section {
-      flex: 1; min-height: 0; display: flex; flex-direction: column;
+    /* Dot-matrix graph canvas */
+    .dmg {
+      width: 100%; height: 36px; display: block;
+      border: 1px solid rgba(0,191,255,0.1);
+      background: rgba(0,191,255,0.03);
+      border-radius: 2px;
+      margin-top: 0.2rem; margin-bottom: 0.1rem;
     }
-    .graph-label {
-      font-family: var(--font-tech); font-size: 1.1rem;
-      color: var(--color-hud-primary); opacity: 0.45;
+
+    /* Dual graph wrapper */
+    .dual-wrap {
+      position: relative; width: 100%; height: 44px;
+      border: 1px solid rgba(0,191,255,0.1);
+      background: rgba(0,191,255,0.03);
+      border-radius: 2px;
+      margin-top: 0.2rem; overflow: hidden;
+    }
+    .dual-center {
+      position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+      background: rgba(0,191,255,0.35);
+      box-shadow: 0 0 4px rgba(0,191,255,0.4); z-index: 2;
+    }
+    .dual-up, .dual-down {
+      position: absolute; left: 0; right: 0; height: 50%; overflow: hidden;
+    }
+    .dual-up   { top: 0; }
+    .dual-down { bottom: 0; }
+    .dual-up   canvas,
+    .dual-down canvas { display: block; width: 100%; height: 100%; }
+
+    /* Graph stat labels below graphs */
+    .glabels {
+      display: flex; justify-content: space-between; margin-top: 0.15rem;
+    }
+    .glbl { font-family: var(--font-tech); font-size: 0.55rem; opacity: 0.7; }
+
+    /* Section divider */
+    .sec-div {
+      height: 1px; background: rgba(0,191,255,0.1);
+      margin: 0.1rem 0; flex-shrink: 0;
+    }
+
+    /* Section title row */
+    .sec-t {
+      font-family: var(--font-tech); font-size: 0.56rem; opacity: 0.45;
       letter-spacing: 2px; text-transform: uppercase;
-      margin-bottom: 0.2rem; flex-shrink: 0;
+      display: flex; justify-content: space-between; margin-bottom: 0.25rem;
+      flex-shrink: 0;
     }
-    .graph-wrap {
-      flex: 1; min-height: 0; position: relative;
-    }
-    .graph-wrap canvas {
-      width: 100%; height: 100%; display: block;
-      position: absolute; inset: 0;
-    }
+    .sec-t span { color: var(--color-hud-primary); opacity: 0.7; font-size: 0.54rem; letter-spacing: 0; }
 
-    /* Hidden canvases that logic.js still needs to instantiate */
-    .hidden-graphs { width: 1px; height: 1px; overflow: hidden; position: absolute; opacity: 0; pointer-events: none; }
-
-    .metrics-row {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; flex-shrink: 0;
+    /* MEM bar gradient overrides (width still controlled by --fill) */
+    .bar-fill.mem-used {
+      background: linear-gradient(to right, #e60012, #FF6B1A, #FFD700);
+      box-shadow: 0 0 5px #FF6B1A;
     }
-    .metric {
-      background: rgba(0,191,255,0.04);
-      border: 1px solid rgba(0,191,255,0.08);
-      border-radius: 3px; padding: 0.3rem 0.5rem;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .metric:hover {
-      border-color: rgba(0,191,255,0.25);
-      box-shadow: 0 0 8px rgba(0,191,255,0.12);
-    }
-    .metric-label {
-      font-family: var(--font-tech); font-size: 1rem;
-      color: var(--color-hud-primary-soft); opacity: 0.7;
-      text-transform: uppercase; letter-spacing: 1px;
-    }
-    .metric-value {
-      font-family: var(--font-tech); font-size: 1.44rem;
-      color: var(--color-hud-neutral); margin-top: 0.1rem;
+    .bar-fill.mem-avail {
+      background: linear-gradient(to right, #005596, #00BFFF);
+      box-shadow: 0 0 5px #00BFFF;
     }
 
     .flicker-on-mount { animation: flicker 0.3s steps(1) 3; }
