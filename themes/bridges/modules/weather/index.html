@@ -108,8 +108,8 @@
     .hourly-time { color: var(--color-hud-primary-soft); opacity: 0.45; font-size: 0.65rem; }
     .hourly-icon { display: flex; align-items: center; justify-content: center; }
 
-    /* SVG weather icons */
-    .wx-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--color-hud-primary); }
+    /* Hourly icon size */
+    .wx-icon { width: 20px; height: 20px; }
 
     /* Scan bar graph */
     .scan-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -123,10 +123,16 @@
     .scan-tab.active { opacity: 1; border-color: var(--color-hud-primary); color: var(--color-hud-neutral); }
     .scan-bars-container { flex: 1; display: flex; align-items: flex-end; gap: 1px; min-height: 60px; overflow: hidden; }
     .scan-bar {
-      flex: 1; background: var(--color-hud-primary); opacity: 0.6;
-      transition: height 0.5s ease, background 0.5s ease; min-height: 2px;
+      flex: 1;
+      background-image: radial-gradient(circle, var(--bar-color, var(--color-hud-primary)) 1.7px, transparent 1.7px);
+      background-size: 4px 4px;
+      background-position: 0 bottom;
+      background-repeat: repeat;
+      opacity: 0.75;
+      transition: height 0.5s ease;
+      min-height: 2px;
     }
-    .scan-bar.current { opacity: 1; box-shadow: 0 0 4px var(--color-hud-primary); }
+    .scan-bar.current { opacity: 1; filter: drop-shadow(0 0 3px var(--color-hud-primary)); }
     .scan-day-labels { display: flex; justify-content: space-between; margin-top: 0.3rem; }
     .scan-day-label { font-family: var(--font-tech); font-size: 0.55rem; color: var(--color-hud-primary-soft); opacity: 0.45; }
 
@@ -164,36 +170,79 @@
 
     .flicker-on-mount { animation: flicker 0.3s steps(1) 3; }
     @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* --- Icon glitch system --- */
+    .hero-icon-wrap { display: flex; justify-content: center; margin-bottom: 0.5rem; }
+    .icon-glitch-wrap { position: relative; width: 52px; height: 52px; }
+    .icon-layer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      filter: drop-shadow(0 0 6px var(--color-hud-primary));
+      color: var(--color-hud-primary);
+    }
+    .icon-layer.icon-neighbor { opacity: 0; }
+
+    @keyframes glitch-out-subtle {
+      0%   { clip-path: inset(0 0 0 0); opacity: 1; }
+      20%  { clip-path: inset(20% 0 60% 0); opacity: 0.8; }
+      40%  { clip-path: inset(60% 0 20% 0); opacity: 0.9; }
+      60%  { clip-path: inset(40% 0 40% 0); opacity: 0.85; }
+      80%  { clip-path: inset(0 0 80% 0); opacity: 0.9; }
+      100% { clip-path: inset(0 0 100% 0); opacity: 0; }
+    }
+    @keyframes glitch-in-subtle {
+      0%   { clip-path: inset(0 0 100% 0); opacity: 0; }
+      20%  { clip-path: inset(80% 0 0 0); opacity: 0.9; }
+      40%  { clip-path: inset(40% 0 40% 0); opacity: 0.85; }
+      60%  { clip-path: inset(20% 0 60% 0); opacity: 0.9; }
+      80%  { clip-path: inset(60% 0 20% 0); opacity: 0.8; }
+      100% { clip-path: inset(0 0 0 0); opacity: 1; }
+    }
+    @keyframes glitch-out-normal {
+      0%   { clip-path: inset(0 0 0 0); opacity: 1; }
+      15%  { clip-path: inset(40% 0 50% 0); opacity: 0.7; transform: translateX(-2px); }
+      35%  { clip-path: inset(10% 0 70% 0); opacity: 0.8; transform: translateX(2px); }
+      55%  { clip-path: inset(60% 0 10% 0); opacity: 0.7; transform: translateX(-1px); }
+      75%  { clip-path: inset(0 0 90% 0); opacity: 0.6; transform: translateX(0); }
+      100% { clip-path: inset(0 0 100% 0); opacity: 0; transform: translateX(0); }
+    }
+    @keyframes glitch-in-normal {
+      0%   { clip-path: inset(0 0 100% 0); opacity: 0; transform: translateX(0); }
+      25%  { clip-path: inset(90% 0 0 0); opacity: 0.6; transform: translateX(2px); }
+      45%  { clip-path: inset(10% 0 60% 0); opacity: 0.7; transform: translateX(-2px); }
+      65%  { clip-path: inset(70% 0 10% 0); opacity: 0.8; transform: translateX(1px); }
+      85%  { clip-path: inset(50% 0 40% 0); opacity: 0.9; transform: translateX(0); }
+      100% { clip-path: inset(0 0 0 0); opacity: 1; transform: translateX(0); }
+    }
+    @keyframes glitch-out-wild {
+      0%   { clip-path: inset(0 0 0 0); opacity: 1; transform: translate(0,0); }
+      10%  { clip-path: inset(60% 0 20% 0); opacity: 0.5; transform: translate(-4px,1px); }
+      25%  { clip-path: inset(10% 0 65% 0); opacity: 0.7; transform: translate(4px,-2px); }
+      40%  { clip-path: inset(45% 0 35% 0); opacity: 0.4; transform: translate(-3px,2px); filter: hue-rotate(90deg); }
+      55%  { clip-path: inset(75% 0 5% 0); opacity: 0.6; transform: translate(2px,0); filter: none; }
+      70%  { clip-path: inset(5% 0 80% 0); opacity: 0.3; transform: translate(-2px,1px); }
+      85%  { clip-path: inset(0 0 95% 0); opacity: 0.5; transform: translate(0,0); }
+      100% { clip-path: inset(0 0 100% 0); opacity: 0; transform: translate(0,0); }
+    }
+    @keyframes glitch-in-wild {
+      0%   { clip-path: inset(0 0 100% 0); opacity: 0; transform: translate(0,0); }
+      15%  { clip-path: inset(95% 0 0 0); opacity: 0.5; transform: translate(3px,-1px); }
+      30%  { clip-path: inset(5% 0 75% 0); opacity: 0.6; transform: translate(-4px,2px); }
+      45%  { clip-path: inset(80% 0 5% 0); opacity: 0.4; transform: translate(2px,-2px); filter: hue-rotate(-90deg); }
+      60%  { clip-path: inset(35% 0 45% 0); opacity: 0.7; transform: translate(-2px,0); filter: none; }
+      75%  { clip-path: inset(65% 0 10% 0); opacity: 0.8; transform: translate(1px,1px); }
+      90%  { clip-path: inset(20% 0 60% 0); opacity: 0.9; transform: translate(0,0); }
+      100% { clip-path: inset(0 0 0 0); opacity: 1; transform: translate(0,0); }
+    }
+
+    .glitching .icon-current { animation: glitch-out-normal 0.4s ease forwards; }
+    .glitching .icon-neighbor { opacity: 1; animation: glitch-in-normal 0.4s ease forwards; }
+    .glitching.intensity-subtle .icon-current { animation: glitch-out-subtle 0.35s ease forwards; }
+    .glitching.intensity-subtle .icon-neighbor { opacity: 1; animation: glitch-in-subtle 0.35s ease forwards; }
+    .glitching.intensity-wild .icon-current { animation: glitch-out-wild 0.5s ease forwards; }
+    .glitching.intensity-wild .icon-neighbor { opacity: 1; animation: glitch-in-wild 0.5s ease forwards; }
   </style>
 </head>
 <body>
-  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
-    <symbol id="icon-clear" viewBox="0 0 20 20">
-      <circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-      <line x1="10" y1="1" x2="10" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="10" y1="16" x2="10" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="1" y1="10" x2="4" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="16" y1="10" x2="19" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="3.5" y1="3.5" x2="5.7" y2="5.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="14.3" y1="14.3" x2="16.5" y2="16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="14.3" y1="5.7" x2="16.5" y2="3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="3.5" y1="16.5" x2="5.7" y2="14.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </symbol>
-    <symbol id="icon-cloudy" viewBox="0 0 20 20">
-      <path d="M4 13a4 4 0 0 1 0-8 4.5 4.5 0 0 1 8.5 1A3.5 3.5 0 0 1 16 13H4z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-    </symbol>
-    <symbol id="icon-rain" viewBox="0 0 20 20">
-      <path d="M4 11a4 4 0 0 1 0-8 4.5 4.5 0 0 1 8.5 1A3.5 3.5 0 0 1 16 11H4z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <line x1="7" y1="14" x2="6" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="10" y1="14" x2="9" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="13" y1="14" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </symbol>
-    <symbol id="icon-storm" viewBox="0 0 20 20">
-      <path d="M4 11a4 4 0 0 1 0-8 4.5 4.5 0 0 1 8.5 1A3.5 3.5 0 0 1 16 11H4z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <polyline points="11,13 9,16 11,16 9,19" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
-  </svg>
-
   <div class="widget-container flicker-on-mount" id="main-container">
     <div class="background-layers"><div class="widget-background"></div></div>
     <div class="scanlines"></div>
@@ -212,10 +261,17 @@
       </header>
 
       <div class="temp-display">
+        <div class="hero-icon-wrap">
+          <div class="icon-glitch-wrap" id="hero-icon">
+            <img class="icon-layer icon-current" id="hero-icon-current" src="" alt="">
+            <img class="icon-layer icon-neighbor" id="hero-icon-neighbor" src="" alt="">
+          </div>
+        </div>
         <div class="temp-value"><span id="temp-value">--</span><span class="temp-unit" id="temp-unit">°C</span></div>
         <div class="weather-condition" id="condition">LOADING...</div>
         <div class="location-display" id="location">--</div>
         <div class="feels-like" id="feels-like"></div>
+        <div class="sunrise-sunset" id="sunrise-sunset" style="display:none;font-family:var(--font-tech);font-size:0.65rem;color:var(--color-hud-primary-soft);opacity:0.45;margin-top:0.15rem;letter-spacing:1px;"></div>
       </div>
 
       <div class="hourly-section">
