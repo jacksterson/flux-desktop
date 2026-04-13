@@ -58,13 +58,14 @@ class DotGraph {
     this.color = color; // CSS color with 'ALPHA' placeholder, e.g. 'rgba(0,191,255,ALPHA)'
     this.max = max;
     this.history = [];
+    this._dpr = window.devicePixelRatio || 1;
     this._ro = new ResizeObserver(() => this._onResize());
     this._ro.observe(canvas);
     this._onResize();
   }
 
   _onResize() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this._dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
@@ -83,7 +84,7 @@ class DotGraph {
   }
 
   _draw() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this._dpr;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
@@ -131,6 +132,7 @@ class DualGraph {
     this.fixedMax = null; // set externally to pin scale (e.g. total RAM)
     this.histA = [];
     this.histB = [];
+    this._dpr = window.devicePixelRatio || 1;
     this._ro = new ResizeObserver(() => this._onResize());
     this._ro.observe(canvasA);
     this._ro.observe(canvasB);
@@ -138,9 +140,9 @@ class DualGraph {
   }
 
   _onResize() {
-    const dpr = window.devicePixelRatio || 1;
-    const ctxMap = [[this.canvasA, this.ctxA], [this.canvasB, this.ctxB]];
-    for (const [c, ctx] of ctxMap) {
+    const dpr = this._dpr = window.devicePixelRatio || 1;
+    const canvases = [this.canvasA, this.canvasB];
+    for (const c of canvases) {
       const w = c.clientWidth, h = c.clientHeight;
       if (!w || !h) continue;
       const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
@@ -164,7 +166,7 @@ class DualGraph {
   }
 
   _drawChan(ctx, canvas, hist, color, fromTop) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this._dpr;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
