@@ -237,7 +237,7 @@ const getGlowColor = (temp) => {
   return 'var(--color-hud-danger)';
 };
 
-const displayTemp = (tempC) => state.unit === 'C' ? tempC : (tempC * 9/5) + 32;
+const displayTemp = (tempC) => cfg.unit === 'C' ? tempC : (tempC * 9/5) + 32;
 
 const getWeatherText = (code) => {
   if (code === 0) return 'CLEAR SKY';
@@ -250,29 +250,49 @@ const getWeatherText = (code) => {
 
 const fetchRealWeather = async (customLocation) => {
   setState({ loading: true, isSimulation: false });
-
   try {
     let latitude, longitude, locName;
 
     if (customLocation && customLocation.trim() !== '') {
-      const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(customLocation)}&count=1`);
-      const geoData = await geoRes.json();
-      if (geoData.results && geoData.results.length > 0) {
-        latitude = geoData.results[0].latitude;
-        longitude = geoData.results[0].longitude;
-        locName = `${geoData.results[0].name}, ${geoData.results[0].country_code}`;
+      const coordMatch = customLocation.trim().match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+      if (coordMatch) {
+        latitude = parseFloat(coordMatch[1]);
+        longitude = parseFloat(coordMatch[2]);
+        locName = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
       } else {
-        throw new Error("Location not found");
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(customLocation)}&count=1`);
+        const geoData = await geoRes.json();
+        if (geoData.results && geoData.results.length > 0) {
+          latitude = geoData.results[0].latitude;
+          longitude = geoData.results[0].longitude;
+          locName = `${geoData.results[0].name}, ${geoData.results[0].country_code}`;
+        } else {
+          throw new Error('Location not found');
+        }
       }
     } else {
-      if (!navigator.geolocation) throw new Error("Geolocation not supported");
+      if (!navigator.geolocation) throw new Error('Geolocation not supported');
       const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
       latitude = pos.coords.latitude;
       longitude = pos.coords.longitude;
-      locName = `LAT:${latitude.toFixed(2)} LON:${longitude.toFixed(2)}`;
+      locName = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
     }
 
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max&timezone=auto`;
+    const days = cfg.forecastDays || 7;
+    const windParam = cfg.windUnit === 'km/h' ? 'kmh' : cfg.windUnit === 'mph' ? 'mph' : cfg.windUnit === 'm/s' ? 'ms' : 'kmh';
+    const precipParam = cfg.precipUnit === 'inch' ? 'inch' : 'mm';
+
+    const url = [
+      `https://api.open-meteo.com/v1/forecast`,
+      `?latitude=${latitude}&longitude=${longitude}`,
+      `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,surface_pressure,visibility,cloud_cover`,
+      `&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,weather_code,dew_point_2m`,
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_sum,wind_speed_10m_max,sunrise,sunset`,
+      `&forecast_days=${days}`,
+      `&wind_speed_unit=${windParam}`,
+      `&precipitation_unit=${precipParam}`,
+      `&timezone=auto`,
+    ].join('');
 
     const res = await fetch(url);
     const data = await res.json();
@@ -280,27 +300,35 @@ const fetchRealWeather = async (customLocation) => {
     const currentIndex = data.hourly.time.findIndex(t => new Date(t).getTime() >= Date.now());
     const startIndex = currentIndex > -1 ? currentIndex : 0;
 
+    const timeFmt = cfg.timeFormat === '12h'
+      ? { hour: 'numeric', minute: '2-digit', hour12: true }
+      : { hour: '2-digit', minute: '2-digit', hour12: false };
+
     const hourly = data.hourly.time.slice(startIndex, startIndex + 7).map((t, i) => ({
-      time: new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: new Date(t).toLocaleTimeString([], timeFmt),
       temp: data.hourly.temperature_2m[startIndex + i],
-      code: data.hourly.weather_code[startIndex + i]
+      code: data.hourly.weather_code[startIndex + i],
     }));
 
-    const daily = data.daily.time.slice(0, 7).map((t, i) => ({
-      date: i === 0 ? 'Today' : new Date(t).toLocaleDateString([], { weekday: 'short' }),
+    const daily = data.daily.time.slice(0, days).map((t, i) => ({
+      date: i === 0 ? 'TODAY' : new Date(t).toLocaleDateString([], { weekday: 'short' }).toUpperCase(),
       max: data.daily.temperature_2m_max[i],
       min: data.daily.temperature_2m_min[i],
       code: data.daily.weather_code[i],
       precip: data.daily.precipitation_sum[i],
-      wind: data.daily.wind_speed_10m_max[i]
+      wind: data.daily.wind_speed_10m_max[i],
     }));
 
-    const fullHourly = Array.from({ length: 168 }).map((_, i) => ({
+    const totalHours = days * 24;
+    const fullHourly = Array.from({ length: totalHours }).map((_, i) => ({
       temp: data.hourly.temperature_2m[i] || 0,
       humidity: data.hourly.relative_humidity_2m[i] || 0,
       precip: data.hourly.precipitation[i] || 0,
-      wind: data.hourly.wind_speed_10m[i] || 0
+      wind: data.hourly.wind_speed_10m[i] || 0,
     }));
+
+    const precipSuffix = cfg.precipUnit === 'inch' ? ' in' : ' mm';
+    const windSuffix = { 'km/h': ' km/h', 'mph': ' mph', 'm/s': ' m/s', 'knots': ' kn' }[cfg.windUnit] || ' km/h';
 
     setState({
       weather: {
@@ -310,20 +338,29 @@ const fetchRealWeather = async (customLocation) => {
         location: locName,
         humidity: data.current.relative_humidity_2m,
         windSpeed: data.current.wind_speed_10m,
+        windSuffix,
         precipitation: data.current.precipitation,
+        precipSuffix,
         uvIndex: data.daily.uv_index_max[0],
         high: data.daily.temperature_2m_max[0],
         low: data.daily.temperature_2m_min[0],
+        pressure: data.current.surface_pressure,
+        visibility: data.current.visibility,
+        cloudCover: data.current.cloud_cover,
+        dewPoint: data.hourly.dew_point_2m[startIndex],
+        sunrise: data.daily.sunrise?.[0],
+        sunset: data.daily.sunset?.[0],
         hourly,
         daily,
-        fullHourly
+        fullHourly,
       },
-      loading: false
+      loading: false,
     });
+    scheduleRefresh();
   } catch (err) {
     setState({
-      weather: { ...state.weather, location: 'ERROR/NOT_FOUND' },
-      loading: false
+      weather: { ...state.weather, location: 'ERROR / NOT FOUND' },
+      loading: false,
     });
   }
 };
@@ -361,6 +398,7 @@ function renderScanBars() {
   if (!container) return;
 
   const { fullHourly, daily } = state.weather;
+  if (!fullHourly || fullHourly.length === 0) return;
 
   const minT = Math.min(...fullHourly.map(h => h.temp), 0);
   const maxT = Math.max(...fullHourly.map(h => h.temp), 1);
@@ -368,7 +406,6 @@ function renderScanBars() {
   const maxP = Math.max(...fullHourly.map(h => h.precip), 0.1);
   const maxW = Math.max(...fullHourly.map(h => h.wind), 0.1);
 
-  // Build bars grouped by day (7 days * 24 hours = 168)
   const bars = fullHourly.map((h, idx) => {
     let heightPct = 0;
     let barColor = 'var(--color-hud-primary)';
@@ -383,28 +420,22 @@ function renderScanBars() {
       heightPct = Math.max(5, (h.wind / maxW) * 100);
       barColor = 'var(--color-hud-alert)';
     }
-    const marginRight = idx % 24 === 23 ? '2px' : '0px';
-    return `<div class="scan-bar" style="height:${heightPct}%;background:${barColor};margin-right:${marginRight}"></div>`;
+    const gap = idx % 24 === 23 ? 'margin-right:2px;' : '';
+    return `<div class="scan-bar" style="height:${heightPct}%;--bar-color:${barColor};${gap}"></div>`;
   });
 
   container.innerHTML = bars.join('');
 
-  // Scan bar shimmer — JS-driven stagger on first render
   if (!_scanBarsInitialized) {
     const barEls = container.querySelectorAll('.scan-bar');
     barEls.forEach((bar, i) => {
       const targetH = bar.style.height;
       bar.style.height = '0';
-      bar.style.transition = 'none';
-      setTimeout(() => {
-        bar.style.transition = 'height 0.3s ease';
-        bar.style.height = targetH;
-      }, i * 40);
+      setTimeout(() => { bar.style.height = targetH; }, i * 40);
     });
     _scanBarsInitialized = true;
   }
 
-  // Day labels
   if (labelsEl && daily) {
     labelsEl.innerHTML = daily.map(d =>
       `<span class="scan-day-label">${d.date}</span>`
@@ -412,21 +443,32 @@ function renderScanBars() {
   }
 }
 
+const METRIC_DEFS = {
+  wind:         { label: 'WIND',       icon: '↗', getValue: (w) => `${w.windSpeed}${w.windSuffix || ' km/h'}` },
+  humidity:     { label: 'HUMIDITY',   icon: '≋', getValue: (w) => `${w.humidity}%` },
+  precipitation:{ label: 'PRECIP',     icon: '↓', getValue: (w) => `${w.precipitation}${w.precipSuffix || ' mm'}` },
+  uv:           { label: 'UV INDEX',   icon: '◉', getValue: (w) => `${w.uvIndex ?? '--'}` },
+  feelsLike:    { label: 'FEELS LIKE', icon: '~', getValue: (w) => `${displayTemp(w.feelsLike).toFixed(1)}°` },
+  pressure:     { label: 'PRESSURE',   icon: '⊙', getValue: (w) => `${w.pressure != null ? Math.round(w.pressure) + ' hPa' : '--'}` },
+  visibility:   { label: 'VISIBILITY', icon: '◎', getValue: (w) => `${w.visibility != null ? (w.visibility / 1000).toFixed(1) + ' km' : '--'}` },
+  dewPoint:     { label: 'DEW POINT',  icon: '·', getValue: (w) => `${w.dewPoint != null ? displayTemp(w.dewPoint).toFixed(1) + '°' : '--'}` },
+  cloudCover:   { label: 'CLOUD CVR',  icon: '☁', getValue: (w) => `${w.cloudCover != null ? w.cloudCover + '%' : '--'}` },
+};
+
 function renderMetrics() {
+  const grid = document.querySelector('.metrics-grid');
+  if (!grid) return;
   const w = state.weather;
-  const windVal = state.windUnit === 'km/h'
-    ? `${w.windSpeed} km/h`
-    : `${(w.windSpeed * 0.621371).toFixed(1)} mph`;
+  const metrics = cfg.metrics || DEFAULT_CFG.metrics;
 
-  const setVal = (id, text) => {
-    const valEl = document.querySelector(`#${id} .metric-val`);
-    if (valEl) valEl.textContent = text;
-  };
-
-  setVal('metric-wind', windVal);
-  setVal('metric-humidity', `${w.humidity}%`);
-  setVal('metric-precip', `${w.precipitation} mm`);
-  setVal('metric-uv', `${w.uvIndex}`);
+  grid.innerHTML = metrics.slice(0, 4).map(key => {
+    const def = METRIC_DEFS[key];
+    if (!def) return '';
+    return `<div class="metric-item">
+      <div class="metric-label">${def.label}</div>
+      <div class="metric-value"><span class="metric-icon">${def.icon}</span><span class="metric-val">${def.getValue(w)}</span></div>
+    </div>`;
+  }).join('');
 }
 
 function render() {
@@ -444,10 +486,10 @@ function render() {
   if (tempValueEl) tempValueEl.textContent = displayTemp(w.temperature).toFixed(1);
 
   const tempUnitEl = document.getElementById('temp-unit');
-  if (tempUnitEl) tempUnitEl.textContent = `°${state.unit}`;
+  if (tempUnitEl) tempUnitEl.textContent = `°${cfg.unit}`;
 
   const unitToggleEl = document.getElementById('unit-toggle');
-  if (unitToggleEl) unitToggleEl.textContent = `°${state.unit === 'C' ? 'F' : 'C'}`;
+  if (unitToggleEl) unitToggleEl.textContent = `°${cfg.unit === 'C' ? 'F' : 'C'}`;
 
   // Condition text (underscores replaced with spaces)
   const conditionEl = document.getElementById('condition');
@@ -456,6 +498,22 @@ function render() {
   // Hero icon
   const heroCurrentEl = document.getElementById('hero-icon-current');
   if (heroCurrentEl) heroCurrentEl.src = getIconSrc(w.condition);
+
+  // Sunrise/sunset
+  const srssEl = document.getElementById('sunrise-sunset');
+  if (srssEl) {
+    if (cfg.showSunriseSunset && w.sunrise && w.sunset) {
+      const fmt = cfg.timeFormat === '12h'
+        ? { hour: 'numeric', minute: '2-digit', hour12: true }
+        : { hour: '2-digit', minute: '2-digit', hour12: false };
+      const sr = new Date(w.sunrise).toLocaleTimeString([], fmt);
+      const ss = new Date(w.sunset).toLocaleTimeString([], fmt);
+      srssEl.textContent = `↑ ${sr}  ·  ↓ ${ss}`;
+      srssEl.style.display = '';
+    } else {
+      srssEl.style.display = 'none';
+    }
+  }
 
   // Location
   const locationEl = document.getElementById('location');
@@ -486,7 +544,9 @@ function attachEventListeners() {
   // Unit toggle
   const unitToggleBtn = document.getElementById('unit-toggle');
   unitToggleBtn?.addEventListener('click', () => {
-    setState({ unit: state.unit === 'C' ? 'F' : 'C' });
+    cfg.unit = cfg.unit === 'C' ? 'F' : 'C';
+    localStorage.setItem('koji_weather_cfg', JSON.stringify(cfg));
+    setState({ unit: cfg.unit });
   });
 
   // Settings open
