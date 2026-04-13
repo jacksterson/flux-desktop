@@ -101,15 +101,18 @@ class GlitchManager {
   constructor(intensity, frequency) {
     this._intensity = intensity;
     this._frequency = frequency;
-    this._slots = new Map(); // wrapEl → timeoutId
+    this._slots = new Map();     // wrapEl → timeoutId
+    this._registered = new Set(); // all registered wrapEls
   }
 
   register(wrapEl) {
+    this._registered.add(wrapEl);
     if (this._intensity === 0) return;
     this._schedule(wrapEl);
   }
 
   unregister(wrapEl) {
+    this._registered.delete(wrapEl);
     const id = this._slots.get(wrapEl);
     if (id != null) clearTimeout(id);
     this._slots.delete(wrapEl);
@@ -118,8 +121,13 @@ class GlitchManager {
   setIntensity(n) {
     this._intensity = n;
     if (n === 0) {
-      for (const [el, id] of this._slots) { clearTimeout(id); }
+      for (const [, id] of this._slots) clearTimeout(id);
       this._slots.clear();
+    } else if (this._slots.size === 0 && this._registered.size > 0) {
+      // Re-schedule all registered elements when re-enabling
+      for (const el of this._registered) {
+        if (!this._slots.has(el)) this._schedule(el);
+      }
     }
   }
 
@@ -155,7 +163,6 @@ class GlitchManager {
       // Promote neighbor to current
       current.src = ICON_BASE + targetFile;
       neighbor.src = '';
-      neighbor.style.opacity = '0';
       this._schedule(wrapEl);
     }, dur);
   }
@@ -163,6 +170,7 @@ class GlitchManager {
   destroy() {
     for (const [, id] of this._slots) clearTimeout(id);
     this._slots.clear();
+    this._registered.clear();
   }
 }
 
@@ -303,7 +311,7 @@ function renderHourlyForecast() {
     return `<div class="hourly-item">
       <span class="hourly-time">${hour.time}</span>
       <div class="hourly-icon">
-        <div class="icon-glitch-wrap" style="width:20px;height:20px;" data-hourly="${i}">
+        <div class="icon-glitch-wrap icon-glitch-wrap--sm" data-hourly="${i}">
           <img class="icon-layer icon-current wx-icon" src="${src}" alt="">
           <img class="icon-layer icon-neighbor wx-icon" src="" alt="" style="opacity:0">
         </div>
