@@ -68,9 +68,11 @@ class DotGraph {
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(h * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+    if (this.canvas.width !== bw || this.canvas.height !== bh) {
+      this.canvas.width = bw;
+      this.canvas.height = bh;
+    }
     this._draw();
   }
 
@@ -81,9 +83,11 @@ class DotGraph {
   }
 
   _draw() {
+    const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.clearRect(0, 0, w, h);
 
     const DOT = 4, R = 1.7;
@@ -139,9 +143,11 @@ class DualGraph {
     for (const [c, ctx] of ctxMap) {
       const w = c.clientWidth, h = c.clientHeight;
       if (!w || !h) continue;
-      c.width = Math.round(w * dpr);
-      c.height = Math.round(h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+      if (c.width !== bw || c.height !== bh) {
+        c.width = bw;
+        c.height = bh;
+      }
     }
     this._draw();
   }
@@ -158,8 +164,10 @@ class DualGraph {
   }
 
   _drawChan(ctx, canvas, hist, color, fromTop) {
+    const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const DOT = 4, R = 1.7;
     const numCols = Math.floor(w / DOT);
