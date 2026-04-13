@@ -42,6 +42,43 @@ const MOCK_DATA = {
   fullHourly: mockFullHourly
 };
 
+// --- Config ---
+const DEFAULT_CFG = {
+  location: '',
+  updateInterval: 10,
+  unit: 'C',
+  windUnit: 'kmh',
+  precipUnit: 'mm',
+  timeFormat: '24h',
+  hourlyCount: 5,
+  forecastDays: 7,
+  defaultTab: 'temp',
+  metrics: ['wind', 'humidity', 'precipitation', 'uv'],
+  glitchIntensity: 2,
+  glitchFrequency: 1,
+  simulation: false,
+  showSunriseSunset: true,
+};
+
+function loadCfg() {
+  const raw = localStorage.getItem('koji_weather_cfg');
+  if (raw) {
+    try { return { ...DEFAULT_CFG, ...JSON.parse(raw) }; } catch (_) {}
+  }
+  // Migrate old individual keys
+  const oldLoc = localStorage.getItem('koji_weather_location');
+  const oldSim = localStorage.getItem('koji_weather_simulation') === 'true';
+  const oldH7  = localStorage.getItem('koji_weather_hourly7') === 'true';
+  return {
+    ...DEFAULT_CFG,
+    location: oldLoc || '',
+    simulation: oldSim,
+    hourlyCount: oldH7 ? 7 : 5,
+  };
+}
+
+let cfg = loadCfg();
+
 // --- Icon system ---
 const ICON_BASE = 'flux-module://icons/weather/';
 
@@ -176,23 +213,15 @@ class GlitchManager {
 
 let glitchManager = null;
 
-// Temporary cfg stub — replaced in Task 5
-let cfg = {
-  glitchIntensity: 2, glitchFrequency: 1, hourlyCount: 5, timeFormat: '24h',
-  defaultTab: 'temp', forecastDays: 7, unit: 'C', windUnit: 'kmh',
-  precipUnit: 'mm', updateInterval: 10, simulation: false, showSunriseSunset: true,
-  location: '', metrics: ['wind','humidity','precipitation','uv'],
-};
-
 let _scanBarsInitialized = false;
 
 let state = {
   weather: MOCK_DATA,
   loading: false,
-  isSimulation: true,
-  unit: 'C',
-  graphMode: 'temp',
-  windUnit: 'km/h',
+  isSimulation: cfg.simulation,
+  unit: cfg.unit,
+  graphMode: cfg.defaultTab || 'temp',
+  windUnit: cfg.windUnit,
 };
 
 function setState(newState) {
@@ -504,10 +533,14 @@ function attachEventListeners() {
 
 // Listen for settings changes (location saved from settings.html)
 window.addEventListener('storage', () => {
-  const loc = localStorage.getItem('koji_weather_location');
-  const sim = localStorage.getItem('koji_weather_simulation') === 'true';
-  if (sim) setState({ isSimulation: true, weather: MOCK_DATA });
-  else if (loc !== null) fetchRealWeather(loc || undefined);
+  cfg = loadCfg();
+  glitchManager?.setIntensity(cfg.glitchIntensity);
+  glitchManager?.setFrequency(cfg.glitchFrequency);
+  if (cfg.simulation) {
+    setState({ isSimulation: true, weather: MOCK_DATA, unit: cfg.unit, graphMode: cfg.defaultTab || 'temp' });
+  } else {
+    fetchRealWeather(cfg.location || undefined);
+  }
 });
 
 attachEventListeners();
@@ -518,8 +551,21 @@ if (heroWrap) glitchManager.register(heroWrap);
 
 render();
 
-const savedSim = localStorage.getItem('koji_weather_simulation') === 'true';
-const savedLoc = localStorage.getItem('koji_weather_location');
-if (!savedSim) fetchRealWeather(savedLoc || undefined);
+if (!cfg.simulation) {
+  fetchRealWeather(cfg.location || undefined);
+}
 
-window._fluxCleanup = function() { glitchManager?.destroy(); };
+// Refresh timer
+let _refreshTimer = null;
+function scheduleRefresh() {
+  clearInterval(_refreshTimer);
+  if (!cfg.simulation) {
+    _refreshTimer = setInterval(() => fetchRealWeather(cfg.location || undefined), cfg.updateInterval * 60 * 1000);
+  }
+}
+scheduleRefresh();
+
+window._fluxCleanup = function() {
+  glitchManager?.destroy();
+  clearInterval(_refreshTimer);
+};
