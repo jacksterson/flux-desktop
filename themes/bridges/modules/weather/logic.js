@@ -47,7 +47,7 @@ const DEFAULT_CFG = {
   location: '',
   updateInterval: 10,
   unit: 'C',
-  windUnit: 'kmh',
+  windUnit: 'km/h',
   precipUnit: 'mm',
   timeFormat: '24h',
   hourlyCount: 5,
@@ -63,7 +63,9 @@ const DEFAULT_CFG = {
 function loadCfg() {
   const raw = localStorage.getItem('koji_weather_cfg');
   if (raw) {
-    try { return { ...DEFAULT_CFG, ...JSON.parse(raw) }; } catch (_) {}
+    try { return { ...DEFAULT_CFG, ...JSON.parse(raw) }; } catch (_) {
+      console.warn('[koji/weather] Corrupt cfg — resetting to defaults.');
+    }
   }
   // Migrate old individual keys
   const oldLoc = localStorage.getItem('koji_weather_location');
@@ -541,6 +543,7 @@ window.addEventListener('storage', () => {
   } else {
     fetchRealWeather(cfg.location || undefined);
   }
+  scheduleRefresh();
 });
 
 attachEventListeners();
