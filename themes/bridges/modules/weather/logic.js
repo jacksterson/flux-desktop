@@ -42,6 +42,140 @@ const MOCK_DATA = {
   fullHourly: mockFullHourly
 };
 
+// --- Icon system ---
+const ICON_BASE = 'flux-module://icons/weather/';
+
+const ICON_MAP = {
+  0: 'sun.svg',
+  1: 'cloud-sun-01.svg', 2: 'cloud-sun-02.svg',
+  3: 'cloudy.svg',
+  45: 'fog.svg', 48: 'fog.svg',
+  51: 'cloud-raining-01.svg', 53: 'cloud-raining-01.svg', 55: 'cloud-raining-02.svg',
+  56: 'sleet.svg', 57: 'sleet.svg',
+  61: 'rain.svg', 63: 'rain.svg', 65: 'cloud-raining-03.svg',
+  66: 'sleet.svg', 67: 'sleet.svg',
+  71: 'snow.svg', 73: 'snow.svg', 75: 'cloud-snowing-01.svg', 77: 'snow.svg',
+  80: 'cloud-raining-04.svg', 81: 'cloud-raining-04.svg', 82: 'cloud-raining-05.svg',
+  85: 'cloud-snowing-01.svg', 86: 'cloud-snowing-02.svg',
+  95: 'thunderstorm.svg', 96: 'cloud-lightning.svg', 99: 'cloud-lightning.svg',
+};
+
+const GLITCH_NEIGHBORS = {
+  'sun.svg':              ['cloud-sun-01.svg'],
+  'cloud-sun-01.svg':     ['sun.svg', 'cloud-sun-02.svg'],
+  'cloud-sun-02.svg':     ['cloud-sun-01.svg', 'cloudy.svg'],
+  'cloudy.svg':           ['cloud-sun-02.svg', 'cloud-01.svg'],
+  'fog.svg':              ['cloud-01.svg', 'cloud-02.svg'],
+  'cloud-raining-01.svg': ['cloud-raining-02.svg', 'droplets-01.svg'],
+  'cloud-raining-02.svg': ['cloud-raining-01.svg', 'droplets-01.svg'],
+  'sleet.svg':            ['cloud-snowing-01.svg', 'cloud-raining-01.svg'],
+  'rain.svg':             ['cloud-raining-03.svg', 'cloud-raining-04.svg'],
+  'cloud-raining-03.svg': ['rain.svg', 'cloud-raining-04.svg'],
+  'cloud-raining-04.svg': ['rain.svg', 'cloud-raining-03.svg'],
+  'cloud-raining-05.svg': ['cloud-raining-04.svg', 'cloud-raining-03.svg'],
+  'snow.svg':             ['cloud-snowing-01.svg', 'sleet.svg'],
+  'cloud-snowing-01.svg': ['snow.svg', 'cloud-snowing-02.svg'],
+  'cloud-snowing-02.svg': ['cloud-snowing-01.svg', 'sleet.svg'],
+  'thunderstorm.svg':     ['cloud-lightning.svg', 'lightning-01.svg'],
+  'cloud-lightning.svg':  ['thunderstorm.svg', 'lightning-01.svg'],
+  'lightning-01.svg':     ['cloud-lightning.svg', 'thunderstorm.svg'],
+};
+
+function getIconSrc(wmoCode) {
+  return ICON_BASE + (ICON_MAP[wmoCode] || 'cloudy.svg');
+}
+
+// --- Glitch system ---
+// Frequency ranges (ms): 0=slow, 1=normal, 2=fast
+const GLITCH_FREQ = [
+  [10000, 20000],
+  [4000,  12000],
+  [2000,   6000],
+];
+// Intensity CSS class suffix: 0=off, 1=subtle, 2=normal(default), 3=wild
+const GLITCH_CLASS = ['', 'intensity-subtle', '', 'intensity-wild'];
+// Animation duration (ms) per intensity
+const GLITCH_DUR = [0, 350, 400, 500];
+
+class GlitchManager {
+  constructor(intensity, frequency) {
+    this._intensity = intensity;
+    this._frequency = frequency;
+    this._slots = new Map(); // wrapEl → timeoutId
+  }
+
+  register(wrapEl) {
+    if (this._intensity === 0) return;
+    this._schedule(wrapEl);
+  }
+
+  unregister(wrapEl) {
+    const id = this._slots.get(wrapEl);
+    if (id != null) clearTimeout(id);
+    this._slots.delete(wrapEl);
+  }
+
+  setIntensity(n) {
+    this._intensity = n;
+    if (n === 0) {
+      for (const [el, id] of this._slots) { clearTimeout(id); }
+      this._slots.clear();
+    }
+  }
+
+  setFrequency(n) { this._frequency = n; }
+
+  _schedule(wrapEl) {
+    if (this._intensity === 0) return;
+    const [min, max] = GLITCH_FREQ[this._frequency] || GLITCH_FREQ[1];
+    const delay = min + Math.random() * (max - min);
+    const id = setTimeout(() => this._glitch(wrapEl), delay);
+    this._slots.set(wrapEl, id);
+  }
+
+  _glitch(wrapEl) {
+    const current = wrapEl.querySelector('.icon-current');
+    const neighbor = wrapEl.querySelector('.icon-neighbor');
+    if (!current || !neighbor) { this._schedule(wrapEl); return; }
+
+    const currentFile = (current.src || '').split('/').pop();
+    const targets = GLITCH_NEIGHBORS[currentFile];
+    if (!targets || targets.length === 0) { this._schedule(wrapEl); return; }
+
+    const targetFile = targets[Math.floor(Math.random() * targets.length)];
+    neighbor.src = ICON_BASE + targetFile;
+
+    const cls = GLITCH_CLASS[this._intensity];
+    if (cls) wrapEl.classList.add('glitching', cls);
+    else wrapEl.classList.add('glitching');
+
+    const dur = GLITCH_DUR[this._intensity];
+    setTimeout(() => {
+      wrapEl.classList.remove('glitching', 'intensity-subtle', 'intensity-wild');
+      // Promote neighbor to current
+      current.src = ICON_BASE + targetFile;
+      neighbor.src = '';
+      neighbor.style.opacity = '0';
+      this._schedule(wrapEl);
+    }, dur);
+  }
+
+  destroy() {
+    for (const [, id] of this._slots) clearTimeout(id);
+    this._slots.clear();
+  }
+}
+
+let glitchManager = null;
+
+// Temporary cfg stub — replaced in Task 5
+let cfg = {
+  glitchIntensity: 2, glitchFrequency: 1, hourlyCount: 5, timeFormat: '24h',
+  defaultTab: 'temp', forecastDays: 7, unit: 'C', windUnit: 'kmh',
+  precipUnit: 'mm', updateInterval: 10, simulation: false, showSunriseSunset: true,
+  location: '', metrics: ['wind','humidity','precipitation','uv'],
+};
+
 let _scanBarsInitialized = false;
 
 let state = {
@@ -65,17 +199,6 @@ const getGlowColor = (temp) => {
 };
 
 const displayTemp = (tempC) => state.unit === 'C' ? tempC : (tempC * 9/5) + 32;
-
-const getWeatherIconId = (code) => {
-  if (code === 0) return '#icon-clear';
-  if (code >= 1 && code <= 2) return '#icon-cloudy';
-  if (code === 3) return '#icon-cloudy';
-  if (code >= 51 && code <= 67) return '#icon-rain';
-  if (code >= 71 && code <= 77) return '#icon-cloudy';
-  if (code >= 80 && code <= 82) return '#icon-rain';
-  if (code >= 95 && code <= 99) return '#icon-storm';
-  return '#icon-cloudy';
-};
 
 const getWeatherText = (code) => {
   if (code === 0) return 'CLEAR SKY';
@@ -170,14 +293,27 @@ function renderHourlyForecast() {
   const grid = document.getElementById('hourly-grid');
   if (!grid) return;
 
-  grid.innerHTML = state.weather.hourly.slice(0, 7).map(hour => {
-    const iconId = getWeatherIconId(hour.code);
+  // Unregister old hourly slots from GlitchManager
+  grid.querySelectorAll('.icon-glitch-wrap').forEach(el => glitchManager?.unregister(el));
+
+  const count = cfg.hourlyCount || 5;
+
+  grid.innerHTML = state.weather.hourly.slice(0, count).map((hour, i) => {
+    const src = getIconSrc(hour.code);
     return `<div class="hourly-item">
       <span class="hourly-time">${hour.time}</span>
-      <div class="hourly-icon"><svg class="wx-icon"><use href="${iconId}"/></svg></div>
+      <div class="hourly-icon">
+        <div class="icon-glitch-wrap" style="width:20px;height:20px;" data-hourly="${i}">
+          <img class="icon-layer icon-current wx-icon" src="${src}" alt="">
+          <img class="icon-layer icon-neighbor wx-icon" src="" alt="" style="opacity:0">
+        </div>
+      </div>
       <span class="hourly-temp">${displayTemp(hour.temp).toFixed(0)}°</span>
     </div>`;
   }).join('');
+
+  // Register new slots
+  grid.querySelectorAll('.icon-glitch-wrap').forEach(el => glitchManager?.register(el));
 }
 
 function renderScanBars() {
@@ -278,6 +414,10 @@ function render() {
   const conditionEl = document.getElementById('condition');
   if (conditionEl) conditionEl.textContent = getWeatherText(w.condition);
 
+  // Hero icon
+  const heroCurrentEl = document.getElementById('hero-icon-current');
+  if (heroCurrentEl) heroCurrentEl.src = getIconSrc(w.condition);
+
   // Location
   const locationEl = document.getElementById('location');
   if (locationEl) locationEl.textContent = w.location;
@@ -358,23 +498,20 @@ function attachEventListeners() {
 window.addEventListener('storage', () => {
   const loc = localStorage.getItem('koji_weather_location');
   const sim = localStorage.getItem('koji_weather_simulation') === 'true';
-  if (sim) {
-    setState({ isSimulation: true, weather: MOCK_DATA });
-  } else if (loc !== null) {
-    fetchRealWeather(loc || undefined);
-  }
+  if (sim) setState({ isSimulation: true, weather: MOCK_DATA });
+  else if (loc !== null) fetchRealWeather(loc || undefined);
 });
 
-// Initialize
 attachEventListeners();
+
+glitchManager = new GlitchManager(cfg.glitchIntensity, cfg.glitchFrequency);
+const heroWrap = document.getElementById('hero-icon');
+if (heroWrap) glitchManager.register(heroWrap);
+
 render();
 
 const savedSim = localStorage.getItem('koji_weather_simulation') === 'true';
 const savedLoc = localStorage.getItem('koji_weather_location');
-if (!savedSim) {
-  fetchRealWeather(savedLoc || undefined);
-}
+if (!savedSim) fetchRealWeather(savedLoc || undefined);
 
-window._fluxCleanup = function() {
-  // No intervals or timers to clear in this widget
-};
+window._fluxCleanup = function() { glitchManager?.destroy(); };
