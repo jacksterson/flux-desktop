@@ -221,9 +221,7 @@ let state = {
   weather: MOCK_DATA,
   loading: false,
   isSimulation: cfg.simulation,
-  unit: cfg.unit,
   graphMode: cfg.defaultTab || 'temp',
-  windUnit: cfg.windUnit,
 };
 
 function setState(newState) {
@@ -279,7 +277,7 @@ const fetchRealWeather = async (customLocation) => {
     }
 
     const days = cfg.forecastDays || 7;
-    const windParam = cfg.windUnit === 'km/h' ? 'kmh' : cfg.windUnit === 'mph' ? 'mph' : cfg.windUnit === 'm/s' ? 'ms' : 'kmh';
+    const windParam = { 'km/h': 'kmh', 'mph': 'mph', 'm/s': 'ms', 'knots': 'kn' }[cfg.windUnit] || 'kmh';
     const precipParam = cfg.precipUnit === 'inch' ? 'inch' : 'mm';
 
     const url = [
@@ -295,6 +293,7 @@ const fetchRealWeather = async (customLocation) => {
     ].join('');
 
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`API error ${res.status}`);
     const data = await res.json();
 
     const currentIndex = data.hourly.time.findIndex(t => new Date(t).getTime() >= Date.now());
@@ -358,6 +357,7 @@ const fetchRealWeather = async (customLocation) => {
     });
     scheduleRefresh();
   } catch (err) {
+    console.error('[koji/weather] fetch error:', err);
     setState({
       weather: { ...state.weather, location: 'ERROR / NOT FOUND' },
       loading: false,
