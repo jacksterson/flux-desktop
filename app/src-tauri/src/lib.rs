@@ -385,7 +385,7 @@ pub fn run() {
             let project_root = PathBuf::from(".."); // Assuming we run from app/src-tauri
             let dev_runtime = project_root.join("runtime");
             let dev_themes = project_root.join("..").join("themes");
-            let dev_assets = project_root.clone(); // assets/ lives directly under project_root
+            let dev_assets = project_root.join("assets");
 
             if let Some(idx) = path_part.find("_flux/") {
                 let rel = &path_part[idx + 6..];
