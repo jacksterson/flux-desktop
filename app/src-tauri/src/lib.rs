@@ -385,6 +385,7 @@ pub fn run() {
             let project_root = PathBuf::from(".."); // Assuming we run from app/src-tauri
             let dev_runtime = project_root.join("runtime");
             let dev_themes = project_root.join("..").join("themes");
+            let dev_assets = project_root.clone(); // assets/ lives directly under project_root
 
             if let Some(idx) = path_part.find("_flux/") {
                 let rel = &path_part[idx + 6..];
@@ -395,6 +396,11 @@ pub fn run() {
 
             let user_m_base = paths::flux_modules_dir();
             if let Ok(c) = fs::read(user_m_base.join(path_part)) { return finalize_response(ctx.app_handle().clone(), path_part, c); }
+
+            // Assets (shared icon/font/image pack)
+            if let Ok(c) = fs::read(dev_assets.join(path_part)) { return finalize_response(ctx.app_handle().clone(), path_part, c); }
+            let assets_base = res_dir.join("assets");
+            if let Ok(c) = fs::read(assets_base.join(path_part)) { return finalize_response(ctx.app_handle().clone(), path_part, c); }
 
             // Search theme packs (module AND theme root)
             let search_dirs = vec![dev_themes, res_dir.join("themes")];
