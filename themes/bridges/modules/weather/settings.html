@@ -7,60 +7,374 @@
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/shared-hud.css">
   <style>
-    body { padding: 1.2rem; font-family: var(--font-main); color: var(--color-hud-neutral); }
-    h2 { font-family: var(--font-header); font-size: 0.85rem; letter-spacing: 2px; color: var(--color-hud-primary); margin-bottom: 1rem; text-transform: uppercase; }
-    .field { margin-bottom: 1rem; }
-    label { display: block; font-family: var(--font-tech); font-size: 0.7rem; color: var(--color-hud-primary-soft); margin-bottom: 0.3rem; letter-spacing: 1px; text-transform: uppercase; }
-    input[type="text"] {
-      width: 100%; background: rgba(0,191,255,0.05); border: 1px solid var(--color-border-default);
-      color: var(--color-hud-neutral); font-family: var(--font-tech); font-size: 0.85rem;
-      padding: 0.4rem 0.6rem; border-radius: 2px; outline: none;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 1rem 1.2rem 1.4rem;
+      font-family: var(--font-main);
+      color: var(--color-hud-neutral);
+      background: rgba(8,12,22,0.95);
+      overflow-y: auto;
     }
-    input[type="text"]:focus { border-color: var(--color-border-active); }
-    .toggle-row { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1rem; }
-    .toggle-label { font-family: var(--font-tech); font-size: 0.75rem; color: var(--color-hud-primary-soft); }
-    input[type="checkbox"] { accent-color: var(--color-hud-primary); width: 14px; height: 14px; }
+    h2 {
+      font-family: var(--font-header); font-size: 0.8rem; letter-spacing: 3px;
+      color: var(--color-hud-primary); margin: 0 0 1.2rem; text-transform: uppercase;
+      border-bottom: 1px solid rgba(0,191,255,0.15); padding-bottom: 0.6rem;
+    }
+    .section { margin-bottom: 1.2rem; }
+    .section-title {
+      font-family: var(--font-tech); font-size: 0.58rem; letter-spacing: 2px;
+      color: rgba(0,191,255,0.5); text-transform: uppercase; margin-bottom: 0.6rem;
+    }
+    .field { margin-bottom: 0.8rem; }
+    .field-label {
+      display: block; font-family: var(--font-tech); font-size: 0.62rem;
+      color: var(--color-hud-primary-soft); margin-bottom: 0.25rem;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    .field-hint {
+      font-family: var(--font-tech); font-size: 0.55rem;
+      color: rgba(0,191,255,0.35); margin-top: 0.2rem; line-height: 1.4;
+    }
+    input[type="text"] {
+      width: 100%; background: rgba(0,191,255,0.05);
+      border: 1px solid rgba(0,191,255,0.2);
+      color: var(--color-hud-neutral); font-family: var(--font-tech); font-size: 0.8rem;
+      padding: 0.35rem 0.6rem; border-radius: 2px; outline: none;
+    }
+    input[type="text"]:focus { border-color: var(--color-hud-primary); }
+    .locate-row { display: flex; gap: 0.5rem; align-items: center; }
+    .locate-row input { flex: 1; }
+    .locate-btn {
+      font-family: var(--font-tech); font-size: 0.58rem; letter-spacing: 1px;
+      background: rgba(0,191,255,0.08); border: 1px solid rgba(0,191,255,0.25);
+      color: var(--color-hud-primary); padding: 0.35rem 0.65rem;
+      cursor: pointer; border-radius: 2px; white-space: nowrap; text-transform: uppercase;
+    }
+    .locate-btn:hover { background: rgba(0,191,255,0.18); }
+    /* Segmented control */
+    .seg { display: flex; border: 1px solid rgba(0,191,255,0.2); border-radius: 3px; overflow: hidden; }
+    .seg button {
+      flex: 1; font-family: var(--font-tech); font-size: 0.58rem; padding: 0.3rem 0.4rem;
+      background: none; border: none; border-right: 1px solid rgba(0,191,255,0.15);
+      color: rgba(0,191,255,0.45); cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+      transition: background 0.15s, color 0.15s;
+    }
+    .seg button:last-child { border-right: none; }
+    .seg button.active {
+      background: rgba(0,191,255,0.15); color: var(--color-hud-primary);
+      box-shadow: inset 0 0 8px rgba(0,191,255,0.15);
+    }
+    /* Toggle */
+    .toggle-row { display: flex; align-items: flex-start; gap: 0.7rem; margin-bottom: 0.7rem; }
+    .toggle-switch {
+      position: relative; width: 32px; height: 16px; flex-shrink: 0; margin-top: 1px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; background: rgba(0,191,255,0.1);
+      border: 1px solid rgba(0,191,255,0.25); border-radius: 8px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-track::after {
+      content: ''; position: absolute; left: 2px; top: 2px;
+      width: 10px; height: 10px; background: rgba(0,191,255,0.4);
+      border-radius: 50%; transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: rgba(0,191,255,0.2); border-color: var(--color-hud-primary); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); background: var(--color-hud-primary); }
+    .toggle-text { font-family: var(--font-tech); font-size: 0.65rem; }
+    .toggle-desc { font-family: var(--font-tech); font-size: 0.55rem; color: rgba(0,191,255,0.35); margin-top: 0.15rem; }
+    /* Metrics checkboxes */
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .metric-check {
+      display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem;
+      border: 1px solid rgba(0,191,255,0.12); border-radius: 3px; cursor: pointer;
+      background: rgba(0,191,255,0.03); transition: border-color 0.15s, background 0.15s;
+    }
+    .metric-check:has(input:checked) { border-color: rgba(0,191,255,0.35); background: rgba(0,191,255,0.08); }
+    .metric-check input { accent-color: var(--color-hud-primary); width: 12px; height: 12px; }
+    .metric-check span { font-family: var(--font-tech); font-size: 0.6rem; letter-spacing: 1px; text-transform: uppercase; color: rgba(0,191,255,0.65); }
+    .metric-check:has(input:disabled) { opacity: 0.35; cursor: not-allowed; }
+    /* Divider */
+    .divider { border: none; border-top: 1px solid rgba(0,191,255,0.1); margin: 1rem 0; }
+    /* Save */
     .save-btn {
       font-family: var(--font-header); font-size: 0.7rem; letter-spacing: 2px;
-      background: rgba(0,191,255,0.1); border: 1px solid var(--color-border-default);
-      color: var(--color-hud-primary); padding: 0.5rem 1.2rem; cursor: pointer;
-      text-transform: uppercase; border-radius: 2px; width: 100%;
+      background: rgba(0,191,255,0.1); border: 1px solid rgba(0,191,255,0.3);
+      color: var(--color-hud-primary); padding: 0.55rem 1.2rem; cursor: pointer;
+      text-transform: uppercase; border-radius: 2px; width: 100%; margin-top: 0.4rem;
+      transition: background 0.15s;
     }
-    .save-btn:hover { background: rgba(0,191,255,0.2); border-color: var(--color-border-active); }
-    .divider { border: none; border-top: 1px solid var(--color-border-default); opacity: 0.4; margin: 1rem 0; }
+    .save-btn:hover { background: rgba(0,191,255,0.22); }
   </style>
 </head>
 <body>
   <h2>KOJI // WEATHER</h2>
-  <div class="field">
-    <label>Location (city or lat,lon)</label>
-    <input type="text" id="location" placeholder="e.g. London or 51.5,-0.12">
+
+  <!-- LOCATION -->
+  <div class="section">
+    <div class="section-title">Location</div>
+    <div class="field">
+      <div class="locate-row">
+        <input type="text" id="location" placeholder="City name or lat,lon — e.g. Berlin or 52.52,13.41">
+        <button class="locate-btn" id="locate-btn">◎ LOCATE</button>
+      </div>
+      <div class="field-hint">Powered by Open-Meteo — free, no API key required</div>
+    </div>
+    <div class="field">
+      <label class="field-label">Update interval</label>
+      <div class="seg" id="seg-interval">
+        <button data-val="5">5 MIN</button>
+        <button data-val="10">10 MIN</button>
+        <button data-val="30">30 MIN</button>
+      </div>
+    </div>
   </div>
+
   <hr class="divider">
-  <div class="toggle-row">
-    <input type="checkbox" id="use-simulation">
-    <span class="toggle-label">Use simulation (demo mode)</span>
+
+  <!-- UNITS -->
+  <div class="section">
+    <div class="section-title">Units</div>
+    <div class="field">
+      <label class="field-label">Temperature</label>
+      <div class="seg" id="seg-unit">
+        <button data-val="C">°C</button>
+        <button data-val="F">°F</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Wind speed</label>
+      <div class="seg" id="seg-wind">
+        <button data-val="km/h">KM/H</button>
+        <button data-val="mph">MPH</button>
+        <button data-val="m/s">M/S</button>
+        <button data-val="knots">KNOTS</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Precipitation</label>
+      <div class="seg" id="seg-precip">
+        <button data-val="mm">MM</button>
+        <button data-val="inch">IN</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Time format</label>
+      <div class="seg" id="seg-time">
+        <button data-val="24h">24H</button>
+        <button data-val="12h">12H</button>
+      </div>
+    </div>
   </div>
-  <div class="toggle-row">
-    <input type="checkbox" id="show-7-hourly">
-    <span class="toggle-label">Show 7 hourly items (default: 5)</span>
-  </div>
+
   <hr class="divider">
+
+  <!-- FORECAST -->
+  <div class="section">
+    <div class="section-title">Forecast</div>
+    <div class="field">
+      <label class="field-label">Hourly items</label>
+      <div class="seg" id="seg-hourly">
+        <button data-val="5">5</button>
+        <button data-val="7">7</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Forecast days</label>
+      <div class="seg" id="seg-days">
+        <button data-val="3">3</button>
+        <button data-val="5">5</button>
+        <button data-val="7">7</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Default scan tab</label>
+      <div class="seg" id="seg-tab">
+        <button data-val="temp">TMP</button>
+        <button data-val="humidity">HUM</button>
+        <button data-val="precip">PCP</button>
+        <button data-val="wind">WND</button>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- METRICS GRID -->
+  <div class="section">
+    <div class="section-title">Metrics grid <span style="color:rgba(0,191,255,0.35);letter-spacing:0">(pick 4)</span></div>
+    <div class="metrics-grid" id="metrics-grid">
+      <label class="metric-check"><input type="checkbox" value="wind"><span>Wind</span></label>
+      <label class="metric-check"><input type="checkbox" value="humidity"><span>Humidity</span></label>
+      <label class="metric-check"><input type="checkbox" value="precipitation"><span>Precip</span></label>
+      <label class="metric-check"><input type="checkbox" value="uv"><span>UV Index</span></label>
+      <label class="metric-check"><input type="checkbox" value="feelsLike"><span>Feels Like</span></label>
+      <label class="metric-check"><input type="checkbox" value="pressure"><span>Pressure</span></label>
+      <label class="metric-check"><input type="checkbox" value="visibility"><span>Visibility</span></label>
+      <label class="metric-check"><input type="checkbox" value="dewPoint"><span>Dew Point</span></label>
+      <label class="metric-check"><input type="checkbox" value="cloudCover"><span>Cloud Cover</span></label>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- GLITCH -->
+  <div class="section">
+    <div class="section-title">Glitch effects</div>
+    <div class="field">
+      <label class="field-label">Intensity</label>
+      <div class="seg" id="seg-glitch-intensity">
+        <button data-val="0">OFF</button>
+        <button data-val="1">SUBTLE</button>
+        <button data-val="2">NORMAL</button>
+        <button data-val="3">WILD</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Frequency</label>
+      <div class="seg" id="seg-glitch-freq">
+        <button data-val="0">SLOW</button>
+        <button data-val="1">NORMAL</button>
+        <button data-val="2">FAST</button>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- DISPLAY -->
+  <div class="section">
+    <div class="section-title">Display</div>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggle-simulation">
+        <div class="toggle-track"></div>
+      </label>
+      <div>
+        <div class="toggle-text">Simulation mode</div>
+        <div class="toggle-desc">Show sample data instead of live weather</div>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggle-sunrise">
+        <div class="toggle-track"></div>
+      </label>
+      <div>
+        <div class="toggle-text">Show sunrise / sunset</div>
+        <div class="toggle-desc">Display sunrise and sunset times below the temperature</div>
+      </div>
+    </div>
+  </div>
+
   <button class="save-btn" id="save-btn">SAVE SETTINGS</button>
+
   <script>
-    const KEYS = {
-      location: 'koji_weather_location',
-      simulation: 'koji_weather_simulation',
-      hourly7: 'koji_weather_hourly7',
+    const DEFAULT_CFG = {
+      location: '', updateInterval: 10, unit: 'C', windUnit: 'km/h',
+      precipUnit: 'mm', timeFormat: '24h', hourlyCount: 5, forecastDays: 7,
+      defaultTab: 'temp', metrics: ['wind','humidity','precipitation','uv'],
+      glitchIntensity: 2, glitchFrequency: 1, simulation: false, showSunriseSunset: true,
     };
-    document.getElementById('location').value = localStorage.getItem(KEYS.location) || '';
-    document.getElementById('use-simulation').checked = localStorage.getItem(KEYS.simulation) === 'true';
-    document.getElementById('show-7-hourly').checked = localStorage.getItem(KEYS.hourly7) === 'true';
+
+    function loadCfg() {
+      const raw = localStorage.getItem('koji_weather_cfg');
+      if (raw) { try { return { ...DEFAULT_CFG, ...JSON.parse(raw) }; } catch(_) {} }
+      // migrate old keys
+      return {
+        ...DEFAULT_CFG,
+        location: localStorage.getItem('koji_weather_location') || '',
+        simulation: localStorage.getItem('koji_weather_simulation') === 'true',
+        hourlyCount: localStorage.getItem('koji_weather_hourly7') === 'true' ? 7 : 5,
+      };
+    }
+
+    let cfg = loadCfg();
+
+    // --- Populate UI from cfg ---
+    document.getElementById('location').value = cfg.location;
+    document.getElementById('toggle-simulation').checked = cfg.simulation;
+    document.getElementById('toggle-sunrise').checked = cfg.showSunriseSunset;
+
+    function seg(id, val) {
+      const container = document.getElementById(id);
+      container.querySelectorAll('button').forEach(btn => {
+        btn.classList.toggle('active', String(btn.dataset.val) === String(val));
+      });
+      container.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        container.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    }
+
+    seg('seg-interval',         cfg.updateInterval);
+    seg('seg-unit',             cfg.unit);
+    seg('seg-wind',             cfg.windUnit);
+    seg('seg-precip',           cfg.precipUnit);
+    seg('seg-time',             cfg.timeFormat);
+    seg('seg-hourly',           cfg.hourlyCount);
+    seg('seg-days',             cfg.forecastDays);
+    seg('seg-tab',              cfg.defaultTab);
+    seg('seg-glitch-intensity', cfg.glitchIntensity);
+    seg('seg-glitch-freq',      cfg.glitchFrequency);
+
+    // Metrics checkboxes — exactly 4
+    const metricsGrid = document.getElementById('metrics-grid');
+    const checkboxes  = metricsGrid.querySelectorAll('input[type=checkbox]');
+    checkboxes.forEach(cb => {
+      cb.checked = cfg.metrics.includes(cb.value);
+    });
+
+    function updateMetricDisabled() {
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+      checkboxes.forEach(cb => {
+        cb.disabled = !cb.checked && checked.length >= 4;
+      });
+    }
+    updateMetricDisabled();
+    checkboxes.forEach(cb => cb.addEventListener('change', updateMetricDisabled));
+
+    // LOCATE ME button
+    document.getElementById('locate-btn').addEventListener('click', () => {
+      if (!navigator.geolocation) { alert('Geolocation not supported by this browser.'); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          document.getElementById('location').value =
+            `${pos.coords.latitude.toFixed(4)},${pos.coords.longitude.toFixed(4)}`;
+        },
+        () => alert('Could not get location. Please enter it manually.')
+      );
+    });
+
+    function segVal(id) {
+      const active = document.querySelector(`#${id} button.active`);
+      return active ? active.dataset.val : null;
+    }
+
+    // SAVE
     document.getElementById('save-btn').addEventListener('click', () => {
-      localStorage.setItem(KEYS.location, document.getElementById('location').value.trim());
-      localStorage.setItem(KEYS.simulation, document.getElementById('use-simulation').checked);
-      localStorage.setItem(KEYS.hourly7, document.getElementById('show-7-hourly').checked);
-      window.dispatchEvent(new StorageEvent('storage', { key: KEYS.location }));
+      const newCfg = {
+        ...DEFAULT_CFG,
+        location:        document.getElementById('location').value.trim(),
+        updateInterval:  parseInt(segVal('seg-interval'), 10) || 10,
+        unit:            segVal('seg-unit') || 'C',
+        windUnit:        segVal('seg-wind') || 'km/h',
+        precipUnit:      segVal('seg-precip') || 'mm',
+        timeFormat:      segVal('seg-time') || '24h',
+        hourlyCount:     parseInt(segVal('seg-hourly'), 10) || 5,
+        forecastDays:    parseInt(segVal('seg-days'), 10) || 7,
+        defaultTab:      segVal('seg-tab') || 'temp',
+        metrics:         Array.from(checkboxes).filter(c => c.checked).map(c => c.value),
+        glitchIntensity: parseInt(segVal('seg-glitch-intensity'), 10),
+        glitchFrequency: parseInt(segVal('seg-glitch-freq'), 10),
+        simulation:      document.getElementById('toggle-simulation').checked,
+        showSunriseSunset: document.getElementById('toggle-sunrise').checked,
+      };
+      localStorage.setItem('koji_weather_cfg', JSON.stringify(newCfg));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'koji_weather_cfg' }));
       WidgetAPI?.widget?.closeSettings?.();
     });
   </script>
