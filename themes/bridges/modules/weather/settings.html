@@ -337,16 +337,26 @@
     updateMetricDisabled();
     checkboxes.forEach(cb => cb.addEventListener('change', updateMetricDisabled));
 
-    // LOCATE ME button
-    document.getElementById('locate-btn').addEventListener('click', () => {
-      if (!navigator.geolocation) { alert('Geolocation not supported by this browser.'); return; }
-      navigator.geolocation.getCurrentPosition(
-        pos => {
+    // LOCATE ME button — uses IP geolocation (navigator.geolocation unavailable in custom schemes)
+    document.getElementById('locate-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('locate-btn');
+      btn.textContent = '◎ ...';
+      btn.disabled = true;
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        const data = await res.json();
+        if (data.latitude && data.longitude) {
           document.getElementById('location').value =
-            `${pos.coords.latitude.toFixed(4)},${pos.coords.longitude.toFixed(4)}`;
-        },
-        () => alert('Could not get location. Please enter it manually.')
-      );
+            `${parseFloat(data.latitude).toFixed(4)},${parseFloat(data.longitude).toFixed(4)}`;
+        } else {
+          alert('Could not determine location. Please enter it manually.');
+        }
+      } catch (_) {
+        alert('Could not determine location. Please enter it manually.');
+      } finally {
+        btn.textContent = '◎ LOCATE';
+        btn.disabled = false;
+      }
     });
 
     function segVal(id) {

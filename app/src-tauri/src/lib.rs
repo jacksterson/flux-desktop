@@ -230,7 +230,11 @@ fn find_module_manifest(id: &str, res_dir: &std::path::Path) -> Result<ModuleMan
 
 #[tauri::command] fn open_module_settings(app: AppHandle, id: String) -> Result<(), String> {
     let url = WebviewUrl::CustomProtocol(format!("flux-module://{}/settings.html", id).parse().unwrap());
-    let _ = WebviewWindowBuilder::new(&app, format!("{}-settings", id), url).title("Settings").build();
+    let _ = WebviewWindowBuilder::new(&app, format!("{}-settings", id), url)
+        .title("Settings")
+        .decorations(false)
+        .transparent(true)
+        .build();
     Ok(())
 }
 
