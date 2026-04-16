@@ -356,6 +356,9 @@
 
     // SAVE
     document.getElementById('save-btn').addEventListener('click', () => {
+      const selectedMetrics = Array.from(checkboxes).filter(c => c.checked).map(c => c.value);
+      const rawIntensity = parseInt(segVal('seg-glitch-intensity'), 10);
+      const rawFrequency = parseInt(segVal('seg-glitch-freq'), 10);
       const newCfg = {
         ...DEFAULT_CFG,
         location:        document.getElementById('location').value.trim(),
@@ -367,9 +370,9 @@
         hourlyCount:     parseInt(segVal('seg-hourly'), 10) || 5,
         forecastDays:    parseInt(segVal('seg-days'), 10) || 7,
         defaultTab:      segVal('seg-tab') || 'temp',
-        metrics:         Array.from(checkboxes).filter(c => c.checked).map(c => c.value),
-        glitchIntensity: parseInt(segVal('seg-glitch-intensity'), 10),
-        glitchFrequency: parseInt(segVal('seg-glitch-freq'), 10),
+        metrics:         selectedMetrics.length > 0 ? selectedMetrics : DEFAULT_CFG.metrics,
+        glitchIntensity: isNaN(rawIntensity) ? DEFAULT_CFG.glitchIntensity : rawIntensity,
+        glitchFrequency: isNaN(rawFrequency) ? DEFAULT_CFG.glitchFrequency : rawFrequency,
         simulation:      document.getElementById('toggle-simulation').checked,
         showSunriseSunset: document.getElementById('toggle-sunrise').checked,
       };
