@@ -173,12 +173,13 @@
 
     /* --- Icon glitch system --- */
     .hero-icon-wrap { display: flex; justify-content: center; margin-bottom: 0.5rem; }
-    .icon-glitch-wrap { position: relative; width: 52px; height: 52px; }
+    .icon-glitch-wrap { position: relative; width: 52px; height: 52px; color: var(--color-hud-primary); }
     .icon-glitch-wrap--sm { width: 20px; height: 20px; }
     .icon-layer {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       filter: drop-shadow(0 0 6px var(--color-hud-primary));
     }
+    .icon-layer svg { width: 100%; height: 100%; }
     .icon-layer.icon-neighbor { opacity: 0; }
 
     @keyframes glitch-out-subtle {
@@ -263,8 +264,8 @@
       <div class="temp-display">
         <div class="hero-icon-wrap">
           <div class="icon-glitch-wrap" id="hero-icon">
-            <img class="icon-layer icon-current" id="hero-icon-current" src="" alt="">
-            <img class="icon-layer icon-neighbor" id="hero-icon-neighbor" src="" alt="">
+            <div class="icon-layer icon-current" id="hero-icon-current"></div>
+            <div class="icon-layer icon-neighbor" id="hero-icon-neighbor"></div>
           </div>
         </div>
         <div class="temp-value"><span id="temp-value">--</span><span class="temp-unit" id="temp-unit">°C</span></div>

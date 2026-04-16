@@ -84,6 +84,24 @@ let cfg = loadCfg();
 // --- Icon system ---
 const ICON_BASE = 'flux-module://icons/weather/';
 
+// Inline SVG loader — fetch once, cache, inject as DOM so currentColor works
+const _svgCache = new Map();
+async function fetchSVG(filename) {
+  if (_svgCache.has(filename)) return _svgCache.get(filename);
+  try {
+    const res = await fetch(ICON_BASE + filename);
+    if (!res.ok) return '';
+    const text = await res.text();
+    _svgCache.set(filename, text);
+    return text;
+  } catch { return ''; }
+}
+async function setIconEl(el, wmoCode) {
+  if (!el) return;
+  const filename = ICON_MAP[wmoCode] ?? 'cloudy.svg';
+  el.innerHTML = await fetchSVG(filename);
+}
+
 const ICON_MAP = {
   0: 'sun.svg',
   1: 'cloud-sun-01.svg', 2: 'cloud-sun-02.svg',
@@ -185,12 +203,12 @@ class GlitchManager {
     const neighbor = wrapEl.querySelector('.icon-neighbor');
     if (!current || !neighbor) { this._schedule(wrapEl); return; }
 
-    const currentFile = (current.src || '').split('/').pop();
+    const currentFile = (current.dataset.iconFile || '');
     const targets = GLITCH_NEIGHBORS[currentFile];
     if (!targets || targets.length === 0) { this._schedule(wrapEl); return; }
 
     const targetFile = targets[Math.floor(Math.random() * targets.length)];
-    neighbor.src = ICON_BASE + targetFile;
+    fetchSVG(targetFile).then(svg => { neighbor.innerHTML = svg; });
 
     const cls = GLITCH_CLASS[this._intensity];
     if (cls) wrapEl.classList.add('glitching', cls);
@@ -200,8 +218,9 @@ class GlitchManager {
     setTimeout(() => {
       wrapEl.classList.remove('glitching', 'intensity-subtle', 'intensity-wild');
       // Promote neighbor to current
-      current.src = ICON_BASE + targetFile;
-      neighbor.src = '';
+      current.innerHTML = neighbor.innerHTML;
+      current.dataset.iconFile = targetFile;
+      neighbor.innerHTML = '';
       this._schedule(wrapEl);
     }, dur);
   }
@@ -375,18 +394,23 @@ function renderHourlyForecast() {
   const count = cfg.hourlyCount || 5;
 
   grid.innerHTML = state.weather.hourly.slice(0, count).map((hour, i) => {
-    const src = getIconSrc(hour.code);
+    const iconFile = ICON_MAP[hour.code] || 'cloudy.svg';
     return `<div class="hourly-item">
       <span class="hourly-time">${hour.time}</span>
       <div class="hourly-icon">
         <div class="icon-glitch-wrap icon-glitch-wrap--sm" data-hourly="${i}">
-          <img class="icon-layer icon-current wx-icon" src="${src}" alt="">
-          <img class="icon-layer icon-neighbor wx-icon" src="" alt="" style="opacity:0">
+          <div class="icon-layer icon-current wx-icon" data-icon-file="${iconFile}"></div>
+          <div class="icon-layer icon-neighbor wx-icon"></div>
         </div>
       </div>
       <span class="hourly-temp">${displayTemp(hour.temp).toFixed(0)}°</span>
     </div>`;
   }).join('');
+
+  // Inject SVG icons asynchronously
+  grid.querySelectorAll('.icon-current[data-icon-file]').forEach(el => {
+    fetchSVG(el.dataset.iconFile).then(svg => { el.innerHTML = svg; });
+  });
 
   // Register new slots
   grid.querySelectorAll('.icon-glitch-wrap').forEach(el => glitchManager?.register(el));
@@ -497,7 +521,11 @@ function render() {
 
   // Hero icon
   const heroCurrentEl = document.getElementById('hero-icon-current');
-  if (heroCurrentEl) heroCurrentEl.src = getIconSrc(w.condition);
+  if (heroCurrentEl) {
+    const heroFile = ICON_MAP[w.condition] || 'cloudy.svg';
+    heroCurrentEl.dataset.iconFile = heroFile;
+    setIconEl(heroCurrentEl, w.condition);
+  }
 
   // Sunrise/sunset
   const srssEl = document.getElementById('sunrise-sunset');
